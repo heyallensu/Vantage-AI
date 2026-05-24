@@ -81,6 +81,7 @@ def process_document(document_id: str, conn) -> None:
     # 3. Parse CSV → insert records
     records = parse_csv(raw_csv, document_id)
     if records:
+        cur.execute("DELETE FROM records WHERE document_id = %s", (document_id,))
         cur.executemany(
             """INSERT INTO records (id, document_id, date, description, amount, category, created_at)
                VALUES (%(id)s, %(document_id)s, %(date)s, %(description)s, %(amount)s, %(category)s, %(created_at)s)

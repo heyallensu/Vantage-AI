@@ -22,6 +22,8 @@ def send_document_for_processing(document_id: str, filename: str) -> str:
         "document_id": document_id,
         "filename": filename,
     }
+    if not SQS_QUEUE_URL:
+        raise RuntimeError("SQS_QUEUE_URL is required outside local development")
     response = sqs.send_message(
         QueueUrl=SQS_QUEUE_URL,
         MessageBody=json.dumps(message),
