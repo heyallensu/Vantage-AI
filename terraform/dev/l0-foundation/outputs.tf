@@ -17,3 +17,7 @@ output "private_subnet_ids" {
 output "default_security_group_id" {
   value = module.security_baseline.default_security_group_id
 }
+
+output "nat_gateway_id" {
+  value = module.vpc.nat_gateway_id
+}
