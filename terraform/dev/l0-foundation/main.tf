@@ -15,7 +15,7 @@ provider "aws" {
 
 locals {
   environment = terraform.workspace == "default" ? var.environment : terraform.workspace
-  name_prefix = "$(var.project_name)-${local.environment}"
+  name_prefix = "${var.project_name}-${local.environment}"
 }
 
 module "vpc" {
@@ -25,4 +25,11 @@ module "vpc" {
   vpc_cidr             = var.vpc_cidr
   public_subnet_cidrs  = var.public_subnet_cidrs
   private_subnet_cidrs = var.private_subnet_cidrs
+}
+
+module "security_baseline" {
+  source = "./modules/security-baseline"
+
+  vpc_id      = module.vpc.vpc_id
+  name_prefix = local.name_prefix
 }
