@@ -21,3 +21,31 @@ output "ecr_repository_url" {
 output "ecr_repository_arn" {
   value = module.ecr.repository_arn
 }
+
+output "shared_alb_arn" {
+  value = module.shared_alb.alb_arn
+}
+
+output "shared_alb_dns_name" {
+  value = module.shared_alb.alb_dns_name
+}
+
+output "shared_alb_zone_id" {
+  value = module.shared_alb.alb_zone_id
+}
+
+output "shared_alb_security_group_id" {
+  value = module.shared_alb.security_group_id
+}
+
+output "shared_http_listener_arn" {
+  value = module.shared_alb.http_listener_arn
+}
+
+output "ecs_platform_log_group_name" {
+  value = module.monitoring.ecs_platform_log_group_name
+}
+
+output "ecs_platform_log_group_arn" {
+  value = module.monitoring.ecs_platform_log_group_arn
+}
