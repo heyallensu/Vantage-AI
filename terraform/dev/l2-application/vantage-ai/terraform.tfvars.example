@@ -1,0 +1,32 @@
+aws_region = "ap-southeast-2"
+project_name = "vantage-ai"
+environment = "dev"
+app_name = "vantage-ai"
+
+queue_visibility_timeout_seconds = 120
+queue_message_retention_seconds = 345600
+queue_max_receive_count = 3
+
+db_name = "vantage"
+db_username = "vantage"
+db_instance_class = "db.t4g.micro"
+db_allocated_storage = 20
+db_backup_retention_period = 1
+db_skip_final_snapshot = true
+
+lambda_runtime = "python3.12"
+lambda_handler = "handler.handler"
+lambda_timeout_seconds = 60
+lambda_memory_size = 256
+lambda_package_path = "../../../../lambda/processor/package.zip"
+
+app_container_port = 8000
+app_desired_count = 1
+app_cpu = 256
+app_memory = 512
+app_image_tag = "latest"
+health_check_path = "/health"
+
+alarm_actions = []
+lambda_error_threshold = 1
+dlq_visible_messages_threshold = 1
