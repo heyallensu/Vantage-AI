@@ -104,6 +104,10 @@ resource "aws_ecs_task_definition" "app" {
         {
           name  = "DATABASE_URL"
           value = var.database_url
+        },
+        {
+          name  = "BEDROCK_MODEL_ID"
+          value = var.bedrock_model_id
         }
       ]
 

@@ -234,7 +234,11 @@ The L2 Lambda module expects:
 lambda/processor/package.zip
 ```
 
-Build it before planning or applying L2.
+Build it before planning or applying L2:
+
+```bash
+make lambda-package
+```
 
 ### Missing database password
 

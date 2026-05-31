@@ -74,3 +74,7 @@ variable "database_url" {
   type      = string
   sensitive = true
 }
+
+variable "bedrock_model_id" {
+  type = string
+}

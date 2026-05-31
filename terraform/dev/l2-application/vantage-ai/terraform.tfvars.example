@@ -26,6 +26,7 @@ app_cpu = 256
 app_memory = 512
 app_image_tag = "latest"
 health_check_path = "/health"
+bedrock_model_id = "au.anthropic.claude-haiku-4-5-20251001-v1:0"
 
 alarm_actions = []
 lambda_error_threshold = 1

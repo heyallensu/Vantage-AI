@@ -81,8 +81,12 @@ Expected: all endpoints visible and testable.
 ### ✅ AWS — Terraform Infrastructure
 
 ```bash
-make infra-plan    # review what will be created
-make infra-apply   # create everything
+make tf-plan-l0    # review L0 (VPC)
+make tf-plan-l1    # review L1 (ECS/ECR/ALB)
+make tf-plan-l2    # review L2 (SQS/RDS/Lambda/Service)
+make tf-apply-l0   # (already applied)
+make tf-apply-l1   # create ECS/ECR/ALB
+make tf-apply-l2   # create SQS/RDS/Lambda/Service
 ```
 
 After apply, Terraform outputs should include:
@@ -238,12 +242,12 @@ Expected: JSON with an `anomalies` key containing at least one item (the $75,000
 
 ---
 
-### ✅ Bitbucket Pipelines CI/CD
+### ✅ GitHub Actions CI/CD
 
 Make a small change — edit the version in `/health` to `"1.0.1"`. Commit and push to `main`.
 
-**Check 1 — Pipeline triggers**
-In Bitbucket → Pipelines → confirm a new pipeline run starts within 30 seconds of the push.
+**Check 1 — Workflow triggers**
+On GitHub → Actions tab → confirm a new workflow run starts within 30 seconds of the push.
 
 **Check 2 — All steps pass**
 Pipeline steps in order:
@@ -325,7 +329,7 @@ curl "$BASE/insights/anomalies?document_id=$DOC_ID" | python3 -m json.tool
 - [ ] Upload → SQS → Lambda → RDS pipeline works end-to-end
 - [ ] All three AI endpoints return structured, meaningful responses
 - [ ] The $75,000 anomaly is flagged by AI
-- [ ] Bitbucket pipeline deploys automatically on push to main
+- [ ] GitHub Actions workflow deploys automatically on push to main
 - [ ] Custom domain resolves and returns HTTPS responses
 - [ ] `make destroy` tears down all infrastructure cleanly
 - [ ] README explains the architecture and how to run it
@@ -342,4 +346,4 @@ curl "$BASE/insights/anomalies?document_id=$DOC_ID" | python3 -m json.tool
 | Lambda fails, message in DLQ | DB connection refused | Check RDS security group allows Lambda's SG |
 | AI returns text not JSON | Claude added extra explanation | Add `Reply ONLY with valid JSON` to prompt |
 | Route53 doesn't resolve | Missing alias record or wrong hosted zone | Check Route53 hosted zone matches domain registrar NS records |
-| Pipeline fails on deploy step | AWS credentials not set as pipeline variables | Add `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION` to Bitbucket repo variables |
+| Pipeline fails on deploy step | GitHub Actions OIDC role not configured | Add `AWS_GITHUB_DEPLOY_ROLE_ARN` secret to GitHub repo → Settings → Secrets and variables → Actions |

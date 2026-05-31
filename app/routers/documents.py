@@ -90,7 +90,7 @@ def _process_locally(document_id: str, db: Session):
                 document_id = document_id,
                 date        = row.get("date", ""),
                 description = row.get("description", ""),
-                amount      = float(row.get("amount", 0)),
+                amount      = float(row.get("amount", 0) or 0),
                 category    = row.get("category", "Uncategorised"),
             )
             db.add(record)
