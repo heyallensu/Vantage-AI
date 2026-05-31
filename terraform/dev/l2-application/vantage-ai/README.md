@@ -213,10 +213,7 @@ lambda/processor/package.zip
 Build it from the repository root:
 
 ```bash
-docker run --rm \
-  -v "$PWD/lambda/processor:/var/task" \
-  public.ecr.aws/sam/build-python3.12:latest \
-  /bin/sh -c "rm -rf package package.zip && pip install -r requirements.txt -t package && cp handler.py package/ && cd package && zip -r ../package.zip ."
+make lambda-package
 ```
 
 ## How To Use

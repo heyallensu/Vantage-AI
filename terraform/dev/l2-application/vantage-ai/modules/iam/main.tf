@@ -69,6 +69,16 @@ data "aws_iam_policy_document" "ecs_task_app_permissions" {
     ]
     resources = ["*"]
   }
+
+  statement {
+    sid = "BedrockMarketplaceAccess"
+
+    actions = [
+      "aws-marketplace:ViewSubscriptions",
+      "aws-marketplace:Subscribe"
+    ]
+    resources = ["*"]
+  }
 }
 
 # Attach app permissions directly to the ECS task role

@@ -44,7 +44,7 @@ class Record(Base):
 
 
 # ─── Database connection ──────────────────────────────────────
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@db:5432/vantage")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://vantage:vantage@db:5432/vantage")
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)

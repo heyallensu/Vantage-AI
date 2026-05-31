@@ -21,6 +21,7 @@ import os
 import uuid
 import psycopg2
 from datetime import datetime, timezone
+from urllib.parse import unquote, urlparse
 
 
 DATABASE_URL = os.environ["DATABASE_URL"]  # set in Lambda environment variables
@@ -28,10 +29,17 @@ DATABASE_URL = os.environ["DATABASE_URL"]  # set in Lambda environment variables
 
 def get_connection():
     """Open a fresh PostgreSQL connection (Lambda is stateless, no connection pool)."""
-    import re
-    # Parse postgresql://user:pass@host:port/dbname
-    match = re.match(r"postgresql://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)", DATABASE_URL)
-    user, password, host, port, dbname = match.groups()
+    parsed = urlparse(DATABASE_URL)
+    if parsed.scheme not in {"postgresql", "postgres"}:
+        raise ValueError("DATABASE_URL must use postgresql:// or postgres://")
+    if not parsed.hostname or not parsed.path.lstrip("/"):
+        raise ValueError("DATABASE_URL must include host and database name")
+
+    user = unquote(parsed.username or "")
+    password = unquote(parsed.password or "")
+    host = parsed.hostname
+    port = parsed.port or 5432
+    dbname = parsed.path.lstrip("/")
     return psycopg2.connect(host=host, port=port, dbname=dbname, user=user, password=password)
 
 
@@ -113,6 +121,7 @@ def handler(event, context):
 
     for record in event.get("Records", []):
         message_id = record["messageId"]
+        body = {}
         try:
             body        = json.loads(record["body"])
             document_id = body["document_id"]

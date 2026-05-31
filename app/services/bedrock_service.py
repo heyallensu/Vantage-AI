@@ -9,7 +9,8 @@ import os
 
 bedrock = boto3.client("bedrock-runtime", region_name=os.getenv("AWS_DEFAULT_REGION", "ap-southeast-2"))
 
-MODEL_ID = "anthropic.claude-haiku-20240307-v1:0"
+# Use inference profile for Claude Haiku 4.5 (required for non-ON_DEMAND models)
+MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "au.anthropic.claude-haiku-4-5-20251001-v1:0")
 
 
 def ask_claude(prompt: str, max_tokens: int = 800) -> str:

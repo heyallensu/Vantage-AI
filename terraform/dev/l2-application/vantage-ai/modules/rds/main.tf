@@ -12,7 +12,7 @@ resource "aws_security_group" "database" {
 resource "aws_vpc_security_group_ingress_rule" "postgre_from_vpc" {
   security_group_id = aws_security_group.database.id
   description       = "PostgreSQL from VPC private components"
-  cidr_ipv4         = "10.20.0.0/16"
+  cidr_ipv4         = var.vpc_cidr
   from_port         = 5432
   to_port           = 5432
   ip_protocol       = "tcp"

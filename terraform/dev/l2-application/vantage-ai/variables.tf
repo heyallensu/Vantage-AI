@@ -95,7 +95,7 @@ variable "lambda_package_path" {
 
 variable "app_container_port" {
   type    = number
-  default = 8080
+  default = 8000
 }
 
 variable "app_desired_count" {
@@ -121,6 +121,11 @@ variable "app_image_tag" {
 variable "health_check_path" {
   type    = string
   default = "/health"
+}
+
+variable "bedrock_model_id" {
+  type    = string
+  default = "anthropic.claude-haiku-20240307-v1:0"
 }
 
 variable "alarm_actions" {

@@ -52,6 +52,7 @@ module "rds" {
 
   name_prefix             = local.name_prefix
   vpc_id                  = data.terraform_remote_state.l0.outputs.vpc_id
+  vpc_cidr                = data.terraform_remote_state.l0.outputs.vpc_cidr
   private_subnet_ids      = data.terraform_remote_state.l0.outputs.private_subnet_ids
   db_name                 = var.db_name
   db_username             = var.db_username
@@ -92,7 +93,7 @@ module "ecs_service" {
 
   name_prefix            = local.name_prefix
   vpc_id                 = data.terraform_remote_state.l0.outputs.vpc_id
-  subnet_ids             = data.terraform_remote_state.l0.outputs.private_subnet_ids
+  subnet_ids             = data.terraform_remote_state.l0.outputs.public_subnet_ids
   assign_public_ip       = true
   alb_security_group_id  = data.terraform_remote_state.l1.outputs.shared_alb_security_group_id
   shared_listener_arn    = data.terraform_remote_state.l1.outputs.shared_http_listener_arn
@@ -109,6 +110,7 @@ module "ecs_service" {
   health_check_path      = var.health_check_path
   sqs_queue_url          = module.sqs.queue_url
   database_url           = local.database_url
+  bedrock_model_id       = var.bedrock_model_id
 }
 
 

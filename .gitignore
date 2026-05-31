@@ -5,6 +5,7 @@
 *.swp
 *.swo
 
+
 # Python bytecode, environments, and build output
 __pycache__/
 *.py[cod]
