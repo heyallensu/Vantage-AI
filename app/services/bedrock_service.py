@@ -6,11 +6,21 @@ Used by the /insights endpoints to analyse records.
 import boto3
 import json
 import os
+import re
 
 bedrock = boto3.client("bedrock-runtime", region_name=os.getenv("AWS_DEFAULT_REGION", "ap-southeast-2"))
 
 # Use inference profile for Claude Haiku 4.5 (required for non-ON_DEMAND models)
 MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "au.anthropic.claude-haiku-4-5-20251001-v1:0")
+
+
+def _strip_markdown(text: str) -> str:
+    """Strip ```json / ``` wrappers that Claude sometimes adds."""
+    text = text.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    return text.strip()
 
 
 def ask_claude(prompt: str, max_tokens: int = 800) -> str:
@@ -43,7 +53,7 @@ Analyse these records and respond ONLY with valid JSON:
 Records:
 {records_text}"""
     raw = ask_claude(prompt)
-    return json.loads(raw)
+    return json.loads(_strip_markdown(raw))
 
 
 def generate_summary(records: list[dict]) -> str:
@@ -64,4 +74,4 @@ If there are no anomalies, return an empty array: []
 Records:
 {records_text}"""
     raw = ask_claude(prompt)
-    return json.loads(raw)
+    return json.loads(_strip_markdown(raw))

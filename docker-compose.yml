@@ -10,6 +10,9 @@ services:
       DATABASE_URL: postgresql://vantage:vantage@db:5432/vantage
       AWS_DEFAULT_REGION: ap-southeast-2
       AWS_EC2_METADATA_DISABLED: "true"
+      BEDROCK_MODEL_ID: au.anthropic.claude-haiku-4-5-20251001-v1:0
+    volumes:
+      - ~/.aws:/root/.aws:ro
     depends_on:
       db:
         condition: service_healthy
