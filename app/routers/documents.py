@@ -5,7 +5,6 @@ POST /documents/upload  — accept a CSV file, save to DB, trigger SQS
 GET  /documents/{id}/status — return current processing status
 """
 
-import os
 import uuid
 from datetime import datetime, timezone
 
@@ -13,6 +12,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.contracts.document_job import DocumentJob
+from app.core.config import Settings, get_settings
 from app.models.record import Document, Record, get_db
 from app.services.csv_service import parse_financial_csv
 from app.services.sqs_service import QueuePublishError, send_document_for_processing
@@ -34,6 +34,7 @@ async def upload_document(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     storage: DocumentStorage = Depends(get_document_storage),
+    settings: Settings = Depends(get_settings),
 ):
     """
     1. Read the uploaded CSV content
@@ -72,7 +73,7 @@ async def upload_document(
         document.checksum_sha256 = stored.checksum_sha256
         db.commit()
 
-        if os.getenv("ENV") != "local":
+        if not settings.is_local:
             send_document_for_processing(
                 DocumentJob(
                     document_id=document_id,
@@ -80,7 +81,8 @@ async def upload_document(
                     object_key=stored.object_key,
                     checksum_sha256=stored.checksum_sha256,
                     trace_id=trace_id,
-                )
+                ),
+                queue_url=settings.sqs_queue_url,
             )
         else:
             _process_locally(document_id, db, storage)

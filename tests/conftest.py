@@ -14,6 +14,7 @@ from sqlalchemy.pool import StaticPool
 os.environ.setdefault("AWS_DEFAULT_REGION", "ap-southeast-2")
 os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
 os.environ.setdefault("ENV", "local")
+os.environ.setdefault("API_KEY", "test-api-key")
 
 from app.models.record import Base, get_db  # noqa: E402
 
@@ -86,5 +87,5 @@ def test_app(db_session: Session) -> Generator[FastAPI, None, None]:
 
 @pytest.fixture
 def client(test_app: FastAPI) -> Generator[TestClient, None, None]:
-    with TestClient(test_app) as test_client:
+    with TestClient(test_app, headers={"X-API-Key": "test-api-key"}) as test_client:
         yield test_client

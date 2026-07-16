@@ -1,11 +1,10 @@
 """Publish versioned document jobs to SQS."""
 
-import os
-
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
 from app.contracts.document_job import DocumentJob
+from app.core.config import get_settings
 
 
 class QueuePublishError(RuntimeError):
@@ -19,12 +18,13 @@ def send_document_for_processing(
     queue_url: str | None = None,
 ) -> str:
     """Publish one strict v1 job and return the provider message ID."""
-    resolved_queue_url = queue_url or os.getenv("SQS_QUEUE_URL", "")
+    settings = get_settings()
+    resolved_queue_url = queue_url or settings.sqs_queue_url
     if not resolved_queue_url:
         raise RuntimeError("SQS_QUEUE_URL is required outside local development")
     resolved_client = client or boto3.client(
         "sqs",
-        region_name=os.getenv("AWS_DEFAULT_REGION", "ap-southeast-2"),
+        region_name=settings.aws_region,
     )
     try:
         response = resolved_client.send_message(

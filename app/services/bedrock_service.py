@@ -1,22 +1,57 @@
-"""
-Calls Amazon Bedrock Claude Haiku.
-Used by the /insights endpoints to analyse records.
-"""
+"""Validated, bounded Amazon Bedrock service boundary."""
 
 import json
-import os
 import re
+from functools import lru_cache
 
 import boto3
+from botocore.config import Config
+from botocore.exceptions import BotoCoreError, ClientError
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
-bedrock = boto3.client("bedrock-runtime", region_name=os.getenv("AWS_DEFAULT_REGION", "ap-southeast-2"))
+from app.core.config import get_settings
 
-# Use inference profile for Claude Haiku 4.5 (required for non-ON_DEMAND models)
-MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "au.anthropic.claude-haiku-4-5-20251001-v1:0")
+
+class BedrockServiceError(RuntimeError):
+    """Stable application error that does not expose provider details."""
+
+
+class AnalysisResult(BaseModel):
+    """Exact response contract expected from the financial analysis prompt."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    total_amount: float
+    record_count: int
+    top_categories: list[str]
+    summary: str = Field(min_length=1)
+    anomalies: list[str]
+
+
+ANOMALY_LIST = TypeAdapter(list[str], config=ConfigDict(strict=True))
+
+
+def build_bedrock_config() -> Config:
+    """Use bounded network operations and a small provider retry budget."""
+    return Config(
+        connect_timeout=3,
+        read_timeout=15,
+        retries={"mode": "standard", "total_max_attempts": 3},
+    )
+
+
+@lru_cache
+def get_bedrock_client():
+    settings = get_settings()
+    return boto3.client(
+        "bedrock-runtime",
+        region_name=settings.aws_region,
+        config=build_bedrock_config(),
+    )
 
 
 def _strip_markdown(text: str) -> str:
-    """Strip ```json / ``` wrappers that Claude sometimes adds."""
+    """Strip fenced JSON wrappers that a model can add despite the prompt."""
     text = text.strip()
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*", "", text)
@@ -24,55 +59,82 @@ def _strip_markdown(text: str) -> str:
     return text.strip()
 
 
-def ask_claude(prompt: str, max_tokens: int = 800) -> str:
-    """Send a prompt to Claude Haiku and return the text response."""
-    body = json.dumps({
-        "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": max_tokens,
-        "messages": [{"role": "user", "content": prompt}],
-    })
-    response = bedrock.invoke_model(modelId=MODEL_ID, body=body)
-    result   = json.loads(response["body"].read())
-    return result["content"][0]["text"]
+def ask_claude(
+    prompt: str,
+    max_tokens: int = 800,
+    *,
+    client=None,
+) -> str:
+    """Invoke the configured model and normalize provider failures."""
+    settings = get_settings()
+    body = json.dumps(
+        {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": max_tokens,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+    )
+    try:
+        response = (client or get_bedrock_client()).invoke_model(
+            modelId=settings.bedrock_model_id,
+            body=body,
+            contentType="application/json",
+            accept="application/json",
+        )
+        result = json.loads(response["body"].read())
+        text = result["content"][0]["text"]
+        if not isinstance(text, str) or not text.strip():
+            raise TypeError("Model response text is empty")
+        return text
+    except (BotoCoreError, ClientError) as exc:
+        raise BedrockServiceError("AI analysis is temporarily unavailable") from exc
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
+        raise BedrockServiceError("AI provider returned an invalid response") from exc
 
 
-def analyze_records(records: list[dict]) -> dict:
-    """
-    Ask Claude to analyse a list of transaction records.
-    Instructs Claude to return structured JSON only — no extra text.
-    """
-    records_text = json.dumps(records, indent=2)
-    prompt = f"""You are a financial analyst.
-Analyse these records and respond ONLY with valid JSON:
+def analyze_records(records: list[dict], *, client=None) -> dict:
+    """Analyze financial operations and enforce the exact JSON response schema."""
+    records_text = json.dumps(records[:200], separators=(",", ":"))
+    prompt = f"""You are a financial operations analyst.
+Review the supplied transaction records. Respond ONLY with valid JSON matching this schema:
 {{
   "total_amount": <float>,
-  "record_count": <int>,
-  "top_categories": ["<category>", ...],
-  "summary": "<2-3 sentence plain English summary>",
-  "anomalies": ["<anomaly description>", ...]
+  "record_count": <integer>,
+  "top_categories": ["<category>"],
+  "summary": "<concise business summary>",
+  "anomalies": ["<specific anomaly>"]
 }}
+Do not provide financial advice. Report only observations supported by the records.
 Records:
 {records_text}"""
-    raw = ask_claude(prompt)
-    return json.loads(_strip_markdown(raw))
+    raw = ask_claude(prompt, client=client)
+    try:
+        result = AnalysisResult.model_validate_json(_strip_markdown(raw))
+    except ValidationError as exc:
+        raise BedrockServiceError("AI provider returned an invalid response") from exc
+    return result.model_dump()
 
 
-def generate_summary(records: list[dict]) -> str:
-    """Ask Claude for a plain English summary of the dataset."""
-    records_text = json.dumps(records[:50], indent=2)  # limit to avoid token overflow
-    prompt = f"""Summarise these business records in 3-4 sentences. Focus on patterns, totals, and anything unusual.
+def generate_summary(records: list[dict], *, client=None) -> str:
+    """Generate a concise descriptive summary, bounded to the first 50 records."""
+    records_text = json.dumps(records[:50], separators=(",", ":"))
+    prompt = f"""Summarize these financial operations in 3-4 sentences.
+Describe totals, patterns, and unusual entries. Do not provide financial advice.
 Records:
 {records_text}"""
-    return ask_claude(prompt, max_tokens=400)
+    return ask_claude(prompt, max_tokens=400, client=client)
 
 
-def find_anomalies(records: list[dict]) -> list[str]:
-    """Ask Claude to identify anomalous records."""
-    records_text = json.dumps(records, indent=2)
-    prompt = f"""You are an auditor. Identify any anomalous or suspicious records from this dataset.
-Return ONLY a JSON array of strings, each describing one anomaly. Example: ["Unusually large amount on 2024-01-15", ...]
-If there are no anomalies, return an empty array: []
+def find_anomalies(records: list[dict], *, client=None) -> list[str]:
+    """Identify record-level anomalies and enforce a strict string-array result."""
+    records_text = json.dumps(records[:200], separators=(",", ":"))
+    prompt = f"""Act as a financial operations auditor.
+Return ONLY a JSON array of strings describing anomalies supported by these records.
+Return [] when no anomaly is supported. Do not provide financial advice.
 Records:
 {records_text}"""
-    raw = ask_claude(prompt)
-    return json.loads(_strip_markdown(raw))
+    raw = ask_claude(prompt, client=client)
+    try:
+        return ANOMALY_LIST.validate_json(_strip_markdown(raw))
+    except ValidationError as exc:
+        raise BedrockServiceError("AI provider returned an invalid response") from exc

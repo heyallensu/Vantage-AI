@@ -1,6 +1,5 @@
 """SQLAlchemy models matching the Alembic-managed database schema."""
 
-import os
 from datetime import datetime, timezone
 
 from sqlalchemy import (
@@ -16,6 +15,8 @@ from sqlalchemy import (
     create_engine,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
+
+from app.core.config import get_settings
 
 Base = declarative_base()
 
@@ -86,9 +87,15 @@ class Record(Base):
 
 
 # ─── Database connection ──────────────────────────────────────
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://vantage:vantage@db:5432/vantage")
+DATABASE_URL = get_settings().database_url
 
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+engine_options = {"pool_pre_ping": True, "pool_timeout": 3}
+if DATABASE_URL.startswith(("postgresql://", "postgres://")):
+    engine_options["connect_args"] = {
+        "connect_timeout": 3,
+        "options": "-c statement_timeout=2000",
+    }
+engine = create_engine(DATABASE_URL, **engine_options)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 

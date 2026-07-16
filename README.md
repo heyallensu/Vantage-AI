@@ -5,20 +5,18 @@ An Intelligent Document Processing Platform — upload CSV documents, extract re
 ## Architecture
 
 ```
-Client → ALB (HTTP :80) → ECS Fargate (FastAPI :8000)
-                              │
-                              ▼
-                           SQS Queue ──→ Lambda (processor)
-                              │              │
-                              ▼              ▼
-                    Amazon Bedrock      RDS PostgreSQL
-                    (Claude Haiku 4.5)
+Client → ALB → ECS Fargate (FastAPI)
+                   │       │       │
+                   │       │       └──→ Amazon Bedrock
+                   │       └──→ S3 (encrypted source CSV)
+                   └──→ SQS + DLQ ──→ Lambda ──→ RDS PostgreSQL
 ```
 
 | Component | Technology |
 |---|---|
 | API | FastAPI (Python 3.12), Uvicorn |
 | Database | PostgreSQL 16 (RDS) |
+| Source Storage | Amazon S3 (private, encrypted objects with SHA-256 metadata) |
 | Message Queue | Amazon SQS + DLQ |
 | Async Processing | AWS Lambda (VPC-attached) |
 | AI Analysis | Amazon Bedrock — Claude Haiku 4.5 (Inference Profile) |
@@ -30,8 +28,8 @@ Client → ALB (HTTP :80) → ECS Fargate (FastAPI :8000)
 ## Data Flow
 
 1. **Upload** — Client POSTs a CSV to `/documents/upload`
-2. **Queue** — API stores raw CSV in RDS and sends `document_id` to SQS
-3. **Process** — Lambda picks up the SQS message, parses CSV rows, inserts `Record` rows
+2. **Store and queue** — API validates the file, stores it in S3, and publishes a versioned job containing its object key and SHA-256 checksum
+3. **Process** — Lambda verifies the checksum and idempotently replaces the extracted `Record` rows in RDS
 4. **Query** — Client polls `/documents/{id}/status` then fetches `/records`
 5. **Analyze** — Client calls `/insights/analyze` — API sends records to Bedrock for AI summary + anomaly detection
 
@@ -39,8 +37,9 @@ Client → ALB (HTTP :80) → ECS Fargate (FastAPI :8000)
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/health` | Health check |
-| `POST` | `/documents/upload` | Upload CSV (multipart form) |
+| `GET` | `/health` | Liveness check (public) |
+| `GET` | `/ready` | Database readiness check (public) |
+| `POST` | `/documents/upload` | Upload CSV (multipart form, API key required) |
 | `GET` | `/documents/{id}/status` | Check processing status |
 | `GET` | `/records` | List extracted records (filter by `document_id`, `category`) |
 | `GET` | `/records/{id}` | Single record |
@@ -55,24 +54,42 @@ Client → ALB (HTTP :80) → ECS Fargate (FastAPI :8000)
 # 1. Start API + PostgreSQL
 make dev
 
+API_KEY=local-development-only
+
 # 2. Health check
 curl http://localhost:8000/health
 
 # 3. Upload sample CSV
 curl -X POST http://localhost:8000/documents/upload \
+  -H "X-API-Key: $API_KEY" \
   -F "file=@sample-data.csv"
 
 # 4. Check status (document processes instantly in local mode)
-curl http://localhost:8000/documents/<DOC_ID>/status
+curl -H "X-API-Key: $API_KEY" http://localhost:8000/documents/<DOC_ID>/status
 
 # 5. View records
-curl "http://localhost:8000/records?document_id=<DOC_ID>"
+curl -H "X-API-Key: $API_KEY" \
+  "http://localhost:8000/records?document_id=<DOC_ID>"
 
 # 6. Stop
 make down
 ```
 
-> **Note:** Local mode (`ENV=local`) processes CSV inline without SQS/Lambda. Bedrock calls still require valid AWS credentials.
+> **Note:** Local mode (`ENV=local`) uses in-memory document storage and processes CSV inline without SQS/Lambda. Bedrock calls still require valid AWS credentials. The local API key is deliberately non-secret and must never be reused outside local development.
+
+## Runtime Security and Configuration
+
+All document, record, and insight endpoints require the `X-API-Key` header. The API uses a timing-safe comparison and never includes the key in its structured logs. `/health` and `/ready` stay public for load-balancer probes.
+
+Non-local startup fails immediately unless these values are present:
+
+- `API_KEY`
+- `AWS_DEFAULT_REGION`
+- `DATABASE_URL`
+- `DOCUMENT_BUCKET`
+- `SQS_QUEUE_URL`
+
+Use [.env.example](.env.example) only as a local template. Production secrets belong in a managed secret store, not source control or Terraform variable files.
 
 ## Deployment — AWS
 
@@ -91,7 +108,7 @@ cp terraform/dev/l0-foundation/terraform.tfvars.example terraform/dev/l0-foundat
 cp terraform/dev/l1-platform/terraform.tfvars.example    terraform/dev/l1-platform/terraform.tfvars
 cp terraform/dev/l2-application/vantage-ai/terraform.tfvars.example \
    terraform/dev/l2-application/vantage-ai/terraform.tfvars
-# Edit L2 tfvars → set db_password
+# Edit L2 tfvars with short-lived values for an isolated test account
 
 # Initialize all layers
 make tf-init
@@ -132,24 +149,28 @@ curl "http://$ALB/health"
 
 ```bash
 ALB="http://<your-alb-dns>"
+API_KEY="<your-short-lived-api-key>"
 
 # Upload
 DOC_ID=$(curl -s -X POST "$ALB/documents/upload" \
+  -H "X-API-Key: $API_KEY" \
   -F "file=@sample-data.csv" | python3 -c "import sys,json; print(json.load(sys.stdin)['document_id'])")
 
 # Wait for Lambda
 sleep 5
 
 # Status
-curl "$ALB/documents/$DOC_ID/status"
+curl -H "X-API-Key: $API_KEY" "$ALB/documents/$DOC_ID/status"
 # → "status": "completed"
 
 # Records
-curl "$ALB/records?document_id=$DOC_ID"
+curl -H "X-API-Key: $API_KEY" "$ALB/records?document_id=$DOC_ID"
 
 # AI Analysis
-curl -X POST "$ALB/insights/analyze?document_id=$DOC_ID"
-curl "$ALB/insights/anomalies?document_id=$DOC_ID"
+curl -X POST -H "X-API-Key: $API_KEY" \
+  "$ALB/insights/analyze?document_id=$DOC_ID"
+curl -H "X-API-Key: $API_KEY" \
+  "$ALB/insights/anomalies?document_id=$DOC_ID"
 ```
 
 ## CI/CD
@@ -184,14 +205,16 @@ make tf-destroy-l0
 │   ├── main.py              # Entry point, routes registration
 │   ├── Dockerfile           # Container build (python:3.12-slim)
 │   ├── requirements.txt
+│   ├── core/                # Validated settings, API-key auth, JSON logging
 │   ├── models/record.py     # SQLAlchemy models (Document, Record)
 │   ├── routers/
 │   │   ├── documents.py     # Upload & status endpoints
 │   │   ├── records.py       # Record listing & retrieval
 │   │   └── insights.py      # AI analysis endpoints
 │   └── services/
-│       ├── bedrock_service.py  # Bedrock Claude Haiku 4.5 client
-│       └── sqs_service.py      # SQS message producer
+│       ├── bedrock_service.py  # Bounded Bedrock client + response contracts
+│       ├── storage_service.py  # Local/S3 document storage adapters
+│       └── sqs_service.py      # Versioned SQS job publisher
 ├── lambda/processor/        # Lambda function for async CSV processing
 │   ├── handler.py           # SQS-triggered, parses CSV → RDS
 │   └── package.zip          # Pre-built deployment package (x86_64)

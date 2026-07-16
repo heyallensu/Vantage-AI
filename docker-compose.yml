@@ -7,6 +7,7 @@ services:
       - "8000:8000"
     environment:
       ENV: local
+      API_KEY: local-development-only
       DATABASE_URL: postgresql://vantage:vantage@db:5432/vantage
       AWS_DEFAULT_REGION: ap-southeast-2
       AWS_EC2_METADATA_DISABLED: "true"
@@ -29,7 +30,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U vantage -d vantage"]
-      interval: 5s 
+      interval: 5s
       timeout: 5s
       retries: 5
 

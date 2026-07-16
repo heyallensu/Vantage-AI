@@ -1,10 +1,13 @@
+from dataclasses import replace
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.models.record import Document
+from app.services.bedrock_service import BedrockServiceError
 from app.services.storage_service import (
     InMemoryDocumentStorage,
     StorageError,
@@ -101,6 +104,25 @@ def test_insights_return_404_when_no_records_exist(client: TestClient) -> None:
     assert response.status_code == 404
 
 
+def test_insights_convert_model_failures_to_stable_502(
+    client: TestClient,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    document_id = upload_sample(client)
+
+    def fail_analysis(records):
+        del records
+        raise BedrockServiceError("provider-specific detail")
+
+    monkeypatch.setattr("app.routers.insights.analyze_records", fail_analysis)
+
+    response = client.post("/insights/analyze", params={"document_id": document_id})
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "AI analysis is temporarily unavailable"}
+    assert "provider-specific detail" not in response.text
+
+
 class FailingStorage:
     bucket_name = "test-failure"
 
@@ -138,10 +160,16 @@ def test_queue_failure_marks_document_failed(
     monkeypatch: MonkeyPatch,
 ) -> None:
     test_app.dependency_overrides[get_document_storage] = InMemoryDocumentStorage
-    monkeypatch.setenv("ENV", "portfolio")
+    non_local_settings = replace(
+        test_app.state.settings,
+        environment="portfolio",
+        document_bucket="portfolio-documents",
+        sqs_queue_url="https://sqs.example.test/jobs",
+    )
+    test_app.dependency_overrides[get_settings] = lambda: non_local_settings
     monkeypatch.setattr(
         "app.routers.documents.send_document_for_processing",
-        lambda job: (_ for _ in ()).throw(RuntimeError("simulated queue failure")),
+        lambda job, **kwargs: (_ for _ in ()).throw(RuntimeError("simulated queue failure")),
     )
 
     response = client.post(

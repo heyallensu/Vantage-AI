@@ -3,13 +3,14 @@
 import csv
 import hashlib
 import io
-import os
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import Protocol
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
+from fastapi import Depends
+
+from app.core.config import Settings, get_settings
 
 MAX_UPLOAD_BYTES = 1024 * 1024
 REQUIRED_HEADERS = {"date", "description", "amount", "category"}
@@ -99,13 +100,13 @@ class InMemoryDocumentStorage:
 class S3DocumentStorage:
     """Private encrypted S3 storage implementation."""
 
-    def __init__(self, *, bucket: str, client=None) -> None:
+    def __init__(self, *, bucket: str, region: str | None = None, client=None) -> None:
         if not bucket:
             raise ValueError("Document bucket is required")
         self.bucket_name = bucket
         self._client = client or boto3.client(
             "s3",
-            region_name=os.getenv("AWS_DEFAULT_REGION", "ap-southeast-2"),
+            region_name=region or get_settings().aws_region,
         )
 
     def store(self, document_id: str, content: bytes) -> StoredDocument:
@@ -132,8 +133,12 @@ class S3DocumentStorage:
             raise StorageError("Unable to read document") from exc
 
 
-@lru_cache
-def get_document_storage() -> DocumentStorage:
-    if os.getenv("ENV", "local") == "local":
+def get_document_storage(
+    settings: Settings = Depends(get_settings),
+) -> DocumentStorage:
+    if settings.is_local:
         return InMemoryDocumentStorage()
-    return S3DocumentStorage(bucket=os.getenv("DOCUMENT_BUCKET", ""))
+    return S3DocumentStorage(
+        bucket=settings.document_bucket,
+        region=settings.aws_region,
+    )
