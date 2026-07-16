@@ -14,15 +14,15 @@ Why Lambda instead of doing this in the API?
 → Scale: Lambda scales independently from ECS
 """
 
-import json
 import csv
 import io
+import json
 import os
 import uuid
-import psycopg2
 from datetime import datetime, timezone
 from urllib.parse import unquote, urlparse
 
+import psycopg2
 
 DATABASE_URL = os.environ["DATABASE_URL"]  # set in Lambda environment variables
 

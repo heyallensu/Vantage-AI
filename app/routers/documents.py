@@ -5,12 +5,15 @@ POST /documents/upload  — accept a CSV file, save to DB, trigger SQS
 GET  /documents/{id}/status — return current processing status
 """
 
-from fastapi          import APIRouter, UploadFile, File, HTTPException, Depends
-from sqlalchemy.orm   import Session
-from datetime         import datetime, timezone
+import os
 import uuid
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from sqlalchemy.orm import Session
 
 from app.models.record import Document, Record, get_db
+from app.services.csv_service import parse_financial_csv
 from app.services.sqs_service import send_document_for_processing
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -28,7 +31,7 @@ async def upload_document(
     4. Send document_id to SQS
     5. Return 202 Accepted — processing happens asynchronously
     """
-    if not file.filename.endswith(".csv"):
+    if not file.filename or not file.filename.endswith(".csv"):
         raise HTTPException(status_code=400, detail="Only CSV files are supported")
 
     content     = await file.read()
@@ -45,7 +48,6 @@ async def upload_document(
 
     # Trigger async processing via SQS
     # In local ENV, skip SQS (ENV=local)
-    import os
     if os.getenv("ENV") != "local":
         send_document_for_processing(document_id, file.filename)
     else:
@@ -78,20 +80,18 @@ def get_status(document_id: str, db: Session = Depends(get_db)):
 
 def _process_locally(document_id: str, db: Session):
     """Local dev only — parse the CSV immediately without going through SQS/Lambda."""
-    import csv, io
     doc = db.query(Document).filter(Document.id == document_id).first()
     if not doc:
         return
     try:
-        reader = csv.DictReader(io.StringIO(doc.raw_csv))
-        for row in reader:
+        for row in parse_financial_csv(doc.raw_csv or ""):
             record = Record(
                 id          = str(uuid.uuid4()),
                 document_id = document_id,
-                date        = row.get("date", ""),
-                description = row.get("description", ""),
-                amount      = float(row.get("amount", 0) or 0),
-                category    = row.get("category", "Uncategorised"),
+                date        = row["date"],
+                description = row["description"],
+                amount      = row["amount"],
+                category    = row["category"],
             )
             db.add(record)
         doc.status     = "completed"

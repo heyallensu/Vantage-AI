@@ -1,5 +1,6 @@
 ENV ?= dev
 APP ?= vantage-ai
+PYTHON ?= .venv/bin/python
 
 L0_DIR := terraform/$(ENV)/l0-foundation
 L1_DIR := terraform/$(ENV)/l1-platform
@@ -7,7 +8,7 @@ L2_DIR := terraform/$(ENV)/l2-application/$(APP)
 
 LAMBDA_DIR := lambda/processor
 
-.PHONY: dev down logs lambda-package build push deploy destroy tf-fmt tf-init tf-workspace tf-validate tf-plan-l0 tf-plan-l1 tf-plan-l2 tf-apply-l0 tf-apply-l1 tf-apply-l2 tf-destroy-l0 tf-destroy-l1 tf-destroy-l2
+.PHONY: dev down logs lint test audit check lambda-package build push deploy destroy tf-fmt tf-init tf-workspace tf-validate tf-plan-l0 tf-plan-l1 tf-plan-l2 tf-apply-l0 tf-apply-l1 tf-apply-l2 tf-destroy-l0 tf-destroy-l1 tf-destroy-l2
 
 dev:
 	docker compose up --build
@@ -17,6 +18,18 @@ down:
 
 logs:
 	docker compose logs -f api db
+
+lint:
+	$(PYTHON) -m ruff check app lambda tests
+
+test:
+	AWS_EC2_METADATA_DISABLED=true AWS_DEFAULT_REGION=ap-southeast-2 ENV=local $(PYTHON) -m pytest
+
+audit:
+	$(PYTHON) -m pip_audit -r app/requirements.txt
+	$(PYTHON) -m pip_audit -r lambda/processor/requirements.txt
+
+check: lint test audit
 
 lambda-package:
 	docker run --rm --platform linux/amd64 -v "$$(pwd)/$(LAMBDA_DIR):/var/task" public.ecr.aws/sam/build-python3.12:latest /bin/sh -c "rm -rf package package.zip && pip install -r requirements.txt -t package && cp handler.py package/ && cd package && zip -r ../package.zip ."

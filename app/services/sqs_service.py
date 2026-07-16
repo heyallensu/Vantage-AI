@@ -3,9 +3,10 @@ Sends messages to SQS.
 The API calls this after saving a document — Lambda will pick it up.
 """
 
-import boto3
 import json
 import os
+
+import boto3
 
 sqs = boto3.client("sqs", region_name=os.getenv("AWS_DEFAULT_REGION", "ap-southeast-2"))
 

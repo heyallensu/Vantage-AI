@@ -3,10 +3,11 @@ SQLAlchemy models — define the database tables.
 Run create_tables() on startup to create them if they don't exist.
 """
 
-from sqlalchemy import Column, String, Float, DateTime, Text, create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
-from datetime import datetime, timezone
 import os
+from datetime import datetime, timezone
+
+from sqlalchemy import Column, DateTime, Float, String, Text, create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 Base = declarative_base()
 

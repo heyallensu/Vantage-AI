@@ -3,29 +3,42 @@ FastAPI entry point.
 Registers all routers and creates DB tables on startup.
 """
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from app.models.record import create_tables
 from app.routers.documents import router
-from app.routers.records import router_records
 from app.routers.insights import router_insights
+from app.routers.records import router_records
 
-app = FastAPI(
-    title       = "Vantage AI API",
-    description = "Intelligent Document Processing Platform",
-    version     = "1.0.0",
-)
 
-# Create DB tables on startup (idempotent — safe to call every time)
-@app.on_event("startup")
-def startup():
-    create_tables()
+def create_app(*, create_database_tables: bool = True) -> FastAPI:
+    """Build the API application, optionally enabling database startup setup."""
 
-# Register routers
-app.include_router(router)           # /documents
-app.include_router(router_records)   # /records
-app.include_router(router_insights)  # /insights
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        if create_database_tables:
+            create_tables()
+        yield
 
-@app.get("/health")
-def health():
-    return {"status": "ok", "version": "1.0.0"}
+    application = FastAPI(
+        title="Vantage AI API",
+        description="Intelligent Document Processing Platform",
+        version="1.0.0",
+        lifespan=lifespan,
+    )
+
+    application.include_router(router)
+    application.include_router(router_records)
+    application.include_router(router_insights)
+
+    @application.get("/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok", "version": "1.0.0"}
+
+    return application
+
+
+app = create_app()

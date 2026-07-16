@@ -3,10 +3,11 @@ Calls Amazon Bedrock Claude Haiku.
 Used by the /insights endpoints to analyse records.
 """
 
-import boto3
 import json
 import os
 import re
+
+import boto3
 
 bedrock = boto3.client("bedrock-runtime", region_name=os.getenv("AWS_DEFAULT_REGION", "ap-southeast-2"))
 

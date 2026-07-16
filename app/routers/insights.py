@@ -6,12 +6,13 @@ GET  /insights/summary    — plain English summary
 GET  /insights/anomalies  — AI-flagged anomalies
 """
 
-from fastapi        import APIRouter, Depends, Query, HTTPException
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing         import Optional
 
 from app.models.record import Record, get_db
-from app.services.bedrock_service import analyze_records, generate_summary, find_anomalies
+from app.services.bedrock_service import analyze_records, find_anomalies, generate_summary
 
 router_insights = APIRouter(prefix="/insights", tags=["insights"])
 
