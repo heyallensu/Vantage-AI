@@ -8,7 +8,7 @@ L2_DIR := terraform/$(ENV)/l2-application/$(APP)
 
 LAMBDA_DIR := lambda/processor
 
-.PHONY: dev down logs lint test audit check lambda-package build push deploy destroy tf-fmt tf-init tf-workspace tf-validate tf-plan-l0 tf-plan-l1 tf-plan-l2 tf-apply-l0 tf-apply-l1 tf-apply-l2 tf-destroy-l0 tf-destroy-l1 tf-destroy-l2
+.PHONY: dev down logs db-migrate db-current lint test audit check lambda-package build push deploy destroy tf-fmt tf-init tf-workspace tf-validate tf-plan-l0 tf-plan-l1 tf-plan-l2 tf-apply-l0 tf-apply-l1 tf-apply-l2 tf-destroy-l0 tf-destroy-l1 tf-destroy-l2
 
 dev:
 	docker compose up --build
@@ -19,11 +19,17 @@ down:
 logs:
 	docker compose logs -f api db
 
+db-migrate:
+	DATABASE_URL=postgresql://vantage:vantage@localhost:5432/vantage $(PYTHON) -m scripts.database.migrate
+
+db-current:
+	DATABASE_URL=postgresql://vantage:vantage@localhost:5432/vantage $(PYTHON) -m alembic current
+
 lint:
-	$(PYTHON) -m ruff check app lambda tests
+	$(PYTHON) -m ruff check app alembic lambda scripts tests
 
 test:
-	AWS_EC2_METADATA_DISABLED=true AWS_DEFAULT_REGION=ap-southeast-2 ENV=local $(PYTHON) -m pytest
+	AWS_EC2_METADATA_DISABLED=true AWS_DEFAULT_REGION=ap-southeast-2 ENV=local $(PYTHON) -m pytest --cov=app --cov-report=term-missing --cov-fail-under=70
 
 audit:
 	$(PYTHON) -m pip_audit -r app/requirements.txt

@@ -38,7 +38,7 @@ def db_session() -> Generator[Session, None, None]:
 def test_app(db_session: Session) -> Generator[FastAPI, None, None]:
     from app.main import create_app
 
-    application = create_app(create_database_tables=False)
+    application = create_app()
 
     def override_get_db() -> Generator[Session, None, None]:
         yield db_session

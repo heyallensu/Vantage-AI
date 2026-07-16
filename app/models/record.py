@@ -1,12 +1,20 @@
-"""
-SQLAlchemy models — define the database tables.
-Run create_tables() on startup to create them if they don't exist.
-"""
+"""SQLAlchemy models matching the Alembic-managed database schema."""
 
 import os
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Float, String, Text, create_engine
+from sqlalchemy import (
+    CheckConstraint,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    create_engine,
+)
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 Base = declarative_base()
@@ -18,14 +26,35 @@ class Document(Base):
     Status flow: pending → processing → completed | failed
     """
     __tablename__ = "documents"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'processing', 'completed', 'failed')",
+            name="ck_documents_status",
+        ),
+        Index("ix_documents_status", "status"),
+        Index("ix_documents_created_at", "created_at"),
+    )
 
-    id          = Column(String, primary_key=True)   # UUID
-    filename    = Column(String, nullable=False)
-    status      = Column(String, default="pending")  # pending | processing | completed | failed
-    raw_csv     = Column(Text, nullable=True)         # stored temporarily until Lambda processes it
-    error_msg   = Column(Text, nullable=True)
-    created_at  = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at  = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    id = Column(String, primary_key=True)
+    filename = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="pending")
+    raw_csv = Column(Text, nullable=True)
+    object_key = Column(String, nullable=True)
+    checksum_sha256 = Column(String(64), nullable=True)
+    trace_id = Column(String, nullable=True)
+    processing_attempts = Column(Integer, nullable=False, default=0)
+    error_msg = Column(Text, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
 
 class Record(Base):
@@ -34,26 +63,34 @@ class Record(Base):
     Lambda writes these after parsing the CSV.
     """
     __tablename__ = "records"
+    __table_args__ = (
+        Index("ix_records_document_id", "document_id"),
+        Index("ix_records_category", "category"),
+        Index("ix_records_created_at", "created_at"),
+    )
 
-    id          = Column(String, primary_key=True)   # UUID
-    document_id = Column(String, nullable=False)      # FK to documents.id
-    date        = Column(String, nullable=True)
+    id = Column(String, primary_key=True)
+    document_id = Column(
+        String,
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    date = Column(String, nullable=True)
     description = Column(String, nullable=True)
-    amount      = Column(Float,  nullable=True)
-    category    = Column(String, nullable=True)
-    created_at  = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    amount = Column(Float, nullable=True)
+    category = Column(String, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
 
 
 # ─── Database connection ──────────────────────────────────────
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://vantage:vantage@db:5432/vantage")
 
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(bind=engine)
-
-
-def create_tables():
-    """Call this once on app startup to create tables if they don't exist."""
-    Base.metadata.create_all(bind=engine)
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
 def get_db():
@@ -61,5 +98,8 @@ def get_db():
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
