@@ -38,7 +38,6 @@ class Document(Base):
     id = Column(String, primary_key=True)
     filename = Column(String, nullable=False)
     status = Column(String, nullable=False, default="pending")
-    raw_csv = Column(Text, nullable=True)
     object_key = Column(String, nullable=True)
     checksum_sha256 = Column(String(64), nullable=True)
     trace_id = Column(String, nullable=True)

@@ -2,6 +2,14 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
+from sqlalchemy.orm import Session
+
+from app.models.record import Document
+from app.services.storage_service import (
+    InMemoryDocumentStorage,
+    StorageError,
+    get_document_storage,
+)
 
 SAMPLE_DATA = Path(__file__).parents[2] / "sample-data.csv"
 
@@ -91,3 +99,57 @@ def test_insights_return_404_when_no_records_exist(client: TestClient) -> None:
     response = client.get("/insights/summary")
 
     assert response.status_code == 404
+
+
+class FailingStorage:
+    bucket_name = "test-failure"
+
+    def store(self, document_id: str, content: bytes):
+        del document_id, content
+        raise StorageError("simulated storage failure")
+
+    def read(self, object_key: str) -> bytes:
+        del object_key
+        raise StorageError("simulated storage failure")
+
+
+def test_storage_failure_marks_document_failed(
+    client: TestClient,
+    test_app,
+    db_session: Session,
+) -> None:
+    test_app.dependency_overrides[get_document_storage] = FailingStorage
+
+    response = client.post(
+        "/documents/upload",
+        files={"file": ("sample-data.csv", SAMPLE_DATA.read_bytes(), "text/csv")},
+    )
+
+    document = db_session.query(Document).one()
+    assert response.status_code == 502
+    assert document.status == "failed"
+    assert document.error_msg == "simulated storage failure"
+
+
+def test_queue_failure_marks_document_failed(
+    client: TestClient,
+    test_app,
+    db_session: Session,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    test_app.dependency_overrides[get_document_storage] = InMemoryDocumentStorage
+    monkeypatch.setenv("ENV", "portfolio")
+    monkeypatch.setattr(
+        "app.routers.documents.send_document_for_processing",
+        lambda job: (_ for _ in ()).throw(RuntimeError("simulated queue failure")),
+    )
+
+    response = client.post(
+        "/documents/upload",
+        files={"file": ("sample-data.csv", SAMPLE_DATA.read_bytes(), "text/csv")},
+    )
+
+    document = db_session.query(Document).one()
+    assert response.status_code == 502
+    assert document.status == "failed"
+    assert document.error_msg == "simulated queue failure"

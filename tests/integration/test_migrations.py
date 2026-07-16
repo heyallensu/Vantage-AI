@@ -1,50 +1,11 @@
 """PostgreSQL migration tests for the complete Alembic history."""
 
-import os
-import uuid
-from collections.abc import Generator
-
-import psycopg2
-import pytest
 import sqlalchemy as sa
-from psycopg2 import sql
 from sqlalchemy import create_engine, inspect
 
 from alembic import command
 from alembic.config import Config
 from scripts.database.migrate import upgrade_database
-
-ADMIN_DATABASE_URL = os.getenv(
-    "MIGRATION_TEST_ADMIN_URL",
-    "postgresql://vantage:vantage@localhost:5432/postgres",
-)
-
-
-@pytest.fixture
-def migration_database_url() -> Generator[str, None, None]:
-    database_name = f"vantage_migration_{uuid.uuid4().hex}"
-
-    try:
-        admin_connection = psycopg2.connect(ADMIN_DATABASE_URL)
-    except psycopg2.OperationalError:
-        pytest.skip("PostgreSQL migration test database is not available")
-
-    admin_connection.autocommit = True
-    with admin_connection.cursor() as cursor:
-        cursor.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database_name)))
-
-    database_url = ADMIN_DATABASE_URL.rsplit("/", 1)[0] + f"/{database_name}"
-    try:
-        yield database_url
-    finally:
-        with admin_connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                "WHERE datname = %s AND pid <> pg_backend_pid()",
-                (database_name,),
-            )
-            cursor.execute(sql.SQL("DROP DATABASE {}").format(sql.Identifier(database_name)))
-        admin_connection.close()
 
 
 def test_migrations_upgrade_downgrade_and_restore_schema(
@@ -75,6 +36,9 @@ def test_migrations_upgrade_downgrade_and_restore_schema(
     )
     check_constraints = inspector.get_check_constraints("documents")
     assert any(constraint["name"] == "ck_documents_status" for constraint in check_constraints)
+    document_columns = {column["name"] for column in inspector.get_columns("documents")}
+    assert "raw_csv" not in document_columns
+    assert {"object_key", "checksum_sha256", "trace_id", "processing_attempts"} <= document_columns
 
     command.downgrade(config, "base")
     assert inspect(engine).get_table_names() == ["alembic_version"]

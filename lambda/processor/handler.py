@@ -1,20 +1,7 @@
-"""
-Lambda function — triggered by SQS.
-
-Flow:
-1. SQS sends a batch of messages (each = one document to process)
-2. Lambda reads document_id from message body
-3. Fetches the raw CSV from RDS
-4. Parses CSV rows → inserts Record rows into RDS
-5. Updates document status to completed (or failed)
-
-Why Lambda instead of doing this in the API?
-→ Decoupled: API never waits for parsing to finish
-→ Retry: SQS retries failed messages automatically
-→ Scale: Lambda scales independently from ECS
-"""
+"""SQS-triggered Lambda processor for versioned S3 document jobs."""
 
 import csv
+import hashlib
 import io
 import json
 import os
@@ -22,128 +9,190 @@ import uuid
 from datetime import datetime, timezone
 from urllib.parse import unquote, urlparse
 
+import boto3
 import psycopg2
 
-DATABASE_URL = os.environ["DATABASE_URL"]  # set in Lambda environment variables
+JOB_FIELDS = {
+    "schema_version",
+    "document_id",
+    "bucket",
+    "object_key",
+    "checksum_sha256",
+    "trace_id",
+}
+REQUIRED_HEADERS = {"date", "description", "amount", "category"}
+s3 = boto3.client("s3", region_name=os.getenv("AWS_DEFAULT_REGION", "ap-southeast-2"))
 
 
 def get_connection():
-    """Open a fresh PostgreSQL connection (Lambda is stateless, no connection pool)."""
-    parsed = urlparse(DATABASE_URL)
+    """Open a fresh PostgreSQL connection from the Lambda runtime configuration."""
+    database_url = os.getenv("DATABASE_URL", "")
+    parsed = urlparse(database_url)
     if parsed.scheme not in {"postgresql", "postgres"}:
         raise ValueError("DATABASE_URL must use postgresql:// or postgres://")
     if not parsed.hostname or not parsed.path.lstrip("/"):
         raise ValueError("DATABASE_URL must include host and database name")
 
-    user = unquote(parsed.username or "")
-    password = unquote(parsed.password or "")
-    host = parsed.hostname
-    port = parsed.port or 5432
-    dbname = parsed.path.lstrip("/")
-    return psycopg2.connect(host=host, port=port, dbname=dbname, user=user, password=password)
+    return psycopg2.connect(
+        host=parsed.hostname,
+        port=parsed.port or 5432,
+        dbname=parsed.path.lstrip("/"),
+        user=unquote(parsed.username or ""),
+        password=unquote(parsed.password or ""),
+    )
+
+
+def parse_job(message_body: str) -> dict:
+    """Parse and strictly validate the supported v1 queue contract."""
+    job = json.loads(message_body)
+    if not isinstance(job, dict) or set(job) != JOB_FIELDS:
+        raise ValueError("Document job must contain exactly the v1 contract fields")
+    if job["schema_version"] != 1:
+        raise ValueError("Unsupported document job schema_version")
+    for field in JOB_FIELDS - {"schema_version"}:
+        if not isinstance(job[field], str) or not job[field]:
+            raise ValueError(f"Document job field {field} must be a non-empty string")
+    checksum = job["checksum_sha256"]
+    if len(checksum) != 64 or any(character not in "0123456789abcdef" for character in checksum):
+        raise ValueError("Document job checksum_sha256 must be a lowercase SHA-256 digest")
+    return job
+
+
+def fetch_csv(job: dict) -> str:
+    """Download the source object and verify its checksum and encoding."""
+    response = s3.get_object(Bucket=job["bucket"], Key=job["object_key"])
+    content = response["Body"].read()
+    actual_checksum = hashlib.sha256(content).hexdigest()
+    if actual_checksum != job["checksum_sha256"]:
+        raise ValueError("Document checksum does not match the queue contract")
+    try:
+        return content.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("Stored document must contain valid UTF-8") from exc
 
 
 def parse_csv(raw_csv: str, document_id: str) -> list[dict]:
-    """
-    Parse the raw CSV content into a list of record dicts.
-    Expects columns: date, description, amount, category
-    Missing columns get sensible defaults.
-    """
-    reader  = csv.DictReader(io.StringIO(raw_csv))
+    """Validate and parse the expected financial operations CSV schema."""
+    reader = csv.DictReader(io.StringIO(raw_csv))
+    headers = {header.strip() for header in (reader.fieldnames or []) if header}
+    missing_headers = sorted(REQUIRED_HEADERS - headers)
+    if missing_headers:
+        raise ValueError(f"Missing required CSV headers: {', '.join(missing_headers)}")
+
     records = []
-    for row in reader:
-        records.append({
-            "id":          str(uuid.uuid4()),
-            "document_id": document_id,
-            "date":        row.get("date", "").strip(),
-            "description": row.get("description", "").strip(),
-            "amount":      float(row.get("amount", 0) or 0),
-            "category":    row.get("category", "Uncategorised").strip(),
-            "created_at":  datetime.now(timezone.utc).isoformat(),
-        })
+    for row_number, row in enumerate(reader, start=2):
+        try:
+            amount = float(row.get("amount", 0) or 0)
+        except ValueError as exc:
+            raise ValueError(f"Invalid amount on row {row_number}") from exc
+        records.append(
+            {
+                "id": str(uuid.uuid4()),
+                "document_id": document_id,
+                "date": row.get("date", "").strip(),
+                "description": row.get("description", "").strip(),
+                "amount": amount,
+                "category": row.get("category", "Uncategorised").strip(),
+                "created_at": datetime.now(timezone.utc),
+            }
+        )
     return records
 
 
-def process_document(document_id: str, conn) -> None:
-    """
-    Fetch document from DB, parse its CSV, insert records, update status.
-    Raises an exception if anything goes wrong — SQS will retry.
-    """
-    cur = conn.cursor()
-
-    # 1. Mark as processing
-    cur.execute(
-        "UPDATE documents SET status = %s, updated_at = %s WHERE id = %s",
-        ("processing", datetime.now(timezone.utc), document_id)
-    )
-    conn.commit()
-
-    # 2. Read raw CSV
-    cur.execute("SELECT raw_csv FROM documents WHERE id = %s", (document_id,))
-    row = cur.fetchone()
-    if not row or not row[0]:
-        raise ValueError(f"Document {document_id} not found or has no CSV content")
-
-    raw_csv = row[0]
-
-    # 3. Parse CSV → insert records
-    records = parse_csv(raw_csv, document_id)
-    if records:
-        cur.execute("DELETE FROM records WHERE document_id = %s", (document_id,))
-        cur.executemany(
-            """INSERT INTO records (id, document_id, date, description, amount, category, created_at)
-               VALUES (%(id)s, %(document_id)s, %(date)s, %(description)s, %(amount)s, %(category)s, %(created_at)s)
-               ON CONFLICT (id) DO NOTHING""",
-            records
+def process_document(job: dict, connection) -> int:
+    """Replace one document's records and status in a single transaction."""
+    raw_csv = fetch_csv(job)
+    records = parse_csv(raw_csv, job["document_id"])
+    cursor = connection.cursor()
+    try:
+        cursor.execute(
+            """UPDATE documents
+               SET status = %s,
+                   processing_attempts = processing_attempts + 1,
+                   error_msg = NULL,
+                   updated_at = %s
+               WHERE id = %s""",
+            ("processing", datetime.now(timezone.utc), job["document_id"]),
         )
+        if cursor.rowcount != 1:
+            raise ValueError(f"Document {job['document_id']} not found")
 
-    # 4. Mark as completed
-    cur.execute(
-        "UPDATE documents SET status = %s, updated_at = %s WHERE id = %s",
-        ("completed", datetime.now(timezone.utc), document_id)
-    )
-    conn.commit()
-    cur.close()
+        cursor.execute("DELETE FROM records WHERE document_id = %s", (job["document_id"],))
+        if records:
+            cursor.executemany(
+                """INSERT INTO records
+                   (id, document_id, date, description, amount, category, created_at)
+                   VALUES
+                   (%(id)s, %(document_id)s, %(date)s, %(description)s,
+                    %(amount)s, %(category)s, %(created_at)s)""",
+                records,
+            )
+        cursor.execute(
+            "UPDATE documents SET status = %s, updated_at = %s WHERE id = %s",
+            ("completed", datetime.now(timezone.utc), job["document_id"]),
+        )
+        connection.commit()
+        return len(records)
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        cursor.close()
 
-    print(f"[OK] document_id={document_id} → {len(records)} records inserted")
+
+def mark_document_failed(connection, document_id: str, error: Exception) -> None:
+    """Persist a failed attempt after rolling back the processing transaction."""
+    cursor = connection.cursor()
+    try:
+        cursor.execute(
+            """UPDATE documents
+               SET status = %s,
+                   processing_attempts = processing_attempts + 1,
+                   error_msg = %s,
+                   updated_at = %s
+               WHERE id = %s""",
+            ("failed", str(error)[:1000], datetime.now(timezone.utc), document_id),
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        cursor.close()
 
 
 def handler(event, context):
-    """
-    Lambda entry point.
-
-    SQS delivers messages in batches. We process each one.
-    If a record fails, we raise an exception so SQS can retry it.
-    Use 'batchItemFailures' to only retry failed messages (not the whole batch).
-    """
-    conn             = get_connection()
-    batch_failures   = []
+    """Process an SQS batch and return failures for item-level retry."""
+    del context
+    batch_failures = []
 
     for record in event.get("Records", []):
         message_id = record["messageId"]
-        body = {}
+        connection = None
+        job = None
         try:
-            body        = json.loads(record["body"])
-            document_id = body["document_id"]
-            process_document(document_id, conn)
-
-        except Exception as e:
-            print(f"[ERROR] messageId={message_id} failed: {e}")
-
-            # Mark document as failed in DB
-            try:
-                cur = conn.cursor()
-                cur.execute(
-                    "UPDATE documents SET status = %s, error_msg = %s, updated_at = %s WHERE id = %s",
-                    ("failed", str(e), datetime.now(timezone.utc), body.get("document_id", "unknown"))
-                )
-                conn.commit()
-                cur.close()
-            except Exception:
-                pass
-
-            # Tell SQS to retry only this message
+            job = parse_job(record["body"])
+            connection = get_connection()
+            record_count = process_document(job, connection)
+            print(
+                f"document_processed message_id={message_id} "
+                f"document_id={job['document_id']} trace_id={job['trace_id']} "
+                f"record_count={record_count}"
+            )
+        except Exception as error:
+            print(f"document_failed message_id={message_id} error={error}")
+            if connection is not None and job is not None:
+                try:
+                    connection.rollback()
+                    mark_document_failed(connection, job["document_id"], error)
+                except Exception as database_error:
+                    print(
+                        f"failure_status_update_failed message_id={message_id} "
+                        f"document_id={job['document_id']} error={database_error}"
+                    )
             batch_failures.append({"itemIdentifier": message_id})
+        finally:
+            if connection is not None:
+                connection.close()
 
-    conn.close()
     return {"batchItemFailures": batch_failures}
