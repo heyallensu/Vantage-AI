@@ -65,3 +65,17 @@ planout
 terraform.rc
 
 # Keep .terraform.lock.hcl tracked to pin provider versions.
+
+# JavaScript/frontend dependencies and generated output
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# Local validation and load-test output
+artifacts/
+test-results/
+k6-results/
+
+# Account-specific Terraform backend configuration
+*.backend.hcl
+.aws-account-id

@@ -215,7 +215,3 @@ make tf-destroy-l0
 | Bedrock AccessDeniedException (Marketplace) | Ensure IAM role has `aws-marketplace:ViewSubscriptions` + `aws-marketplace:Subscribe` |
 | Lambda not triggering | Check SQS → Lambda event source mapping exists |
 | Lambda fails, DLQ has messages | RDS security group may not allow Lambda SG |
-
----
-
-
