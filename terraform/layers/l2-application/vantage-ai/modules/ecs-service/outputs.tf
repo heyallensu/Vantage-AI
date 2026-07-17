@@ -7,7 +7,7 @@ output "task_definition_arn" {
 }
 
 output "app_security_group_id" {
-  value = aws_security_group.app.id
+  value = var.app_security_group_id
 }
 
 output "target_group_arn" {

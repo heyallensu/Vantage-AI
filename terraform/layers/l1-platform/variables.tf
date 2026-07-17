@@ -18,9 +18,27 @@ variable "project_name" {
   default = "vantage-ai"
 }
 
+variable "owner" {
+  type = string
+}
+
+variable "expires_at" {
+  type = string
+
+  validation {
+    condition     = can(regex("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", var.expires_at))
+    error_message = "expires_at must use YYYY-MM-DD."
+  }
+}
+
 variable "log_retention_days" {
   type    = number
   default = 14
+}
+
+variable "application_port" {
+  type    = number
+  default = 8000
 }
 
 variable "state_bucket" {

@@ -30,15 +30,11 @@ variable "private_subnet_ids" {
   type = list(string)
 }
 
-variable "vpc_id" {
-  type = string
-}
+variable "lambda_security_group_id" { type = string }
 
 variable "sqs_queue_arn" {
   type = string
 }
 
-variable "database_url" {
-  type      = string
-  sensitive = true
-}
+variable "database_secret_arn" { type = string }
+variable "database_name" { type = string }

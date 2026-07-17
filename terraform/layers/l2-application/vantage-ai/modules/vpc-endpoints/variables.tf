@@ -1,0 +1,9 @@
+variable "name_prefix" { type = string }
+variable "vpc_id" { type = string }
+variable "aws_region" { type = string }
+variable "private_subnet_ids" { type = list(string) }
+variable "private_route_table_ids" { type = list(string) }
+variable "secretsmanager_endpoint_security_group_id" { type = string }
+variable "document_bucket_arn" { type = string }
+variable "database_secret_arn" { type = string }
+variable "api_key_secret_arn" { type = string }

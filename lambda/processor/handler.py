@@ -7,7 +7,7 @@ import json
 import os
 import uuid
 from datetime import datetime, timezone
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote
 
 import boto3
 import psycopg2
@@ -26,19 +26,39 @@ s3 = boto3.client("s3", region_name=os.getenv("AWS_DEFAULT_REGION", "ap-southeas
 
 def get_connection():
     """Open a fresh PostgreSQL connection from the Lambda runtime configuration."""
-    database_url = os.getenv("DATABASE_URL", "")
-    parsed = urlparse(database_url)
-    if parsed.scheme not in {"postgresql", "postgres"}:
-        raise ValueError("DATABASE_URL must use postgresql:// or postgres://")
-    if not parsed.hostname or not parsed.path.lstrip("/"):
-        raise ValueError("DATABASE_URL must include host and database name")
+    return psycopg2.connect(resolve_database_url())
 
-    return psycopg2.connect(
-        host=parsed.hostname,
-        port=parsed.port or 5432,
-        dbname=parsed.path.lstrip("/"),
-        user=unquote(parsed.username or ""),
-        password=unquote(parsed.password or ""),
+
+def resolve_database_url(*, client=None) -> str:
+    """Resolve local DATABASE_URL or assemble one from the managed RDS secret."""
+    database_url = os.getenv("DATABASE_URL", "")
+    if database_url:
+        return database_url
+
+    secret_arn = os.getenv("DB_SECRET_ARN", "")
+    if not secret_arn:
+        raise RuntimeError("DATABASE_URL or DB_SECRET_ARN is required")
+    secrets_client = client or boto3.client(
+        "secretsmanager",
+        region_name=os.getenv("AWS_DEFAULT_REGION", "ap-southeast-2"),
+    )
+    response = secrets_client.get_secret_value(SecretId=secret_arn)
+    try:
+        secret = json.loads(response["SecretString"])
+        username = str(secret["username"])
+        password = str(secret["password"])
+        host = str(secret["host"])
+        port = int(secret.get("port", 5432))
+        database = str(
+            secret.get("dbname") or secret.get("database") or os.getenv("DB_NAME", "")
+        )
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError("Database secret does not match the expected RDS JSON contract") from exc
+    if not all((username, password, host, database)):
+        raise RuntimeError("Database secret is missing required connection fields")
+    return (
+        f"postgresql://{quote(username, safe='')}:{quote(password, safe='')}@"
+        f"{host}:{port}/{quote(database, safe='')}"
     )
 
 

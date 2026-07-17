@@ -9,11 +9,14 @@ services:
       ENV: local
       API_KEY: local-development-only
       DATABASE_URL: postgresql://vantage:vantage@db:5432/vantage
+      DB_NAME: vantage
       AWS_DEFAULT_REGION: ap-southeast-2
       AWS_EC2_METADATA_DISABLED: "true"
+      AWS_SHARED_CREDENTIALS_FILE: /home/vantage/.aws/credentials
+      AWS_CONFIG_FILE: /home/vantage/.aws/config
       BEDROCK_MODEL_ID: au.anthropic.claude-haiku-4-5-20251001-v1:0
     volumes:
-      - ~/.aws:/root/.aws:ro
+      - ~/.aws:/home/vantage/.aws:ro
     depends_on:
       db:
         condition: service_healthy

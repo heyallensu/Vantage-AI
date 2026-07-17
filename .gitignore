@@ -47,6 +47,7 @@ lambda/**/*.zip
 
 # Terraform local state, secrets, and generated plans
 .terraform/
+.tfplans/
 *.tfstate
 *.tfstate.*
 crash.log

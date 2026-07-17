@@ -17,6 +17,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from app.core.config import get_settings
+from app.core.database import resolve_database_url
 
 Base = declarative_base()
 
@@ -87,7 +88,13 @@ class Record(Base):
 
 
 # ─── Database connection ──────────────────────────────────────
-DATABASE_URL = get_settings().database_url
+settings = get_settings()
+DATABASE_URL = resolve_database_url(
+    database_url=settings.database_url,
+    secret_arn=settings.db_secret_arn,
+    database_name=settings.db_name,
+    region=settings.aws_region,
+)
 
 engine_options = {"pool_pre_ping": True, "pool_timeout": 3}
 if DATABASE_URL.startswith(("postgresql://", "postgres://")):

@@ -5,25 +5,29 @@ An Intelligent Document Processing Platform — upload CSV documents, extract re
 ## Architecture
 
 ```
-Client → ALB → ECS Fargate (FastAPI)
-                   │       │       │
-                   │       │       └──→ Amazon Bedrock
-                   │       └──→ S3 (encrypted source CSV)
-                   └──→ SQS + DLQ ──→ Lambda ──→ RDS PostgreSQL
+Client ──HTTPS──→ CloudFront ──OAC──→ private frontend S3
+                       │
+                       └──HTTP──→ ALB ──→ ECS Fargate (FastAPI)
+                                      │       │       │
+                                      │       │       └──→ Bedrock
+                                      │       └──→ private document S3
+                                      └──→ SQS + DLQ ──→ Lambda ──→ RDS
 ```
 
 | Component | Technology |
 |---|---|
 | API | FastAPI (Python 3.12), Uvicorn |
 | Database | PostgreSQL 16 (RDS) |
-| Source Storage | Amazon S3 (private, encrypted objects with SHA-256 metadata) |
+| Edge | CloudFront default HTTPS domain, private S3 origin with OAC, ALB API origin |
+| Source Storage | Amazon S3 (private, encrypted, versioned, 7-day document retention, destroy-safe) |
 | Message Queue | Amazon SQS + DLQ |
 | Async Processing | AWS Lambda (VPC-attached) |
 | AI Analysis | Amazon Bedrock — Claude Haiku 4.5 (Inference Profile) |
 | Container Runtime | ECS Fargate |
-| Load Balancer | Application Load Balancer |
+| Load Balancer | HTTP ALB reachable only from the CloudFront origin-facing prefix list |
 | Infra as Code | Terraform (3 layers: Foundation → Platform → Application) |
-| CI/CD | GitHub Actions (OIDC) |
+| Operations | CloudWatch log retention, alarms, and a low-cost operations dashboard |
+| CI/CD | GitHub Actions (OIDC) and immutable Git-SHA ECR tags |
 
 ## Data Flow
 
@@ -77,6 +81,11 @@ make down
 
 > **Note:** Local mode (`ENV=local`) uses in-memory document storage and processes CSV inline without SQS/Lambda. Bedrock calls still require valid AWS credentials. The local API key is deliberately non-secret and must never be reused outside local development.
 
+The API container runs as UID/GID `10001` with `HOME=/home/vantage`. Compose
+mounts the host AWS directory read-only at `/home/vantage/.aws` and explicitly
+sets `AWS_SHARED_CREDENTIALS_FILE` and `AWS_CONFIG_FILE` to files below that
+non-root home; credentials are never mounted below `/root`.
+
 ## Runtime Security and Configuration
 
 All document, record, and insight endpoints require the `X-API-Key` header. The API uses a timing-safe comparison and never includes the key in its structured logs. `/health` and `/ready` stay public for load-balancer probes.
@@ -85,11 +94,13 @@ Non-local startup fails immediately unless these values are present:
 
 - `API_KEY`
 - `AWS_DEFAULT_REGION`
-- `DATABASE_URL`
+- either `DATABASE_URL` or `DB_SECRET_ARN` (`DB_NAME` defaults to `vantage`)
 - `DOCUMENT_BUCKET`
 - `SQS_QUEUE_URL`
 
-Use [.env.example](.env.example) only as a local template. Production secrets belong in a managed secret store, not source control or Terraform variable files.
+Use [.env.example](.env.example) only as a local template. RDS owns the production
+master password in Secrets Manager. ECS and Lambda receive only its ARN and
+assemble the PostgreSQL URL at runtime.
 
 ## Deployment — AWS
 
@@ -104,6 +115,14 @@ This repository supports only the ephemeral `portfolio` environment. The safety
 contract is plan → apply → capture evidence → destroy within one short validation
 window. No real account IDs, backend coordinates, passwords, or repository values
 belong in Git.
+
+Every deployment transaction first verifies the active STS account against the
+ignored `.aws-account-id`, then checks that L0, L1, and L2 each report the exact
+`portfolio` workspace. A failure or empty response stops before Terraform plan,
+apply, destroy, output, or ECR access. The workflow never switches workspaces;
+run `make tf-workspace` explicitly, review the result, and retry. The verified
+account and workspace are bound into local provenance and every saved-plan
+manifest.
 
 ### Step 1 — Bootstrap state and OIDC once
 
@@ -122,7 +141,7 @@ The bootstrap stack deliberately retains local state. Store
 the ignored backend and environment files described in
 [terraform/environments/portfolio/README.md](terraform/environments/portfolio/README.md).
 
-### Step 2 — Check and initialize the three layers
+### Step 2 — Bind deployment artifacts to one commit
 
 ```bash
 # Uses no AWS credentials or backend; a cold provider cache still downloads
@@ -132,43 +151,93 @@ make tf-check
 make tf-init
 make tf-workspace
 
-# Review all three plans in dependency order. This requires .aws-account-id.
-export TF_VAR_db_password='<short-lived-database-password>'
-make tf-plan
+# Deploy only committed content. IMAGE_TAG defaults to this commit's canonical
+# 12-character Git abbreviation and cannot be replaced by arbitrary hex.
+export DEPLOY_COMMIT=HEAD
 
-# Build Lambda package (Linux x86_64)
-make lambda-package
+# Create, inspect, and apply one saved plan at a time.
+make tf-plan-l0
+terraform show .tfplans/portfolio/l0-foundation.tfplan
+make tf-apply-l0
 
-# Apply only after reviewing the plans; each layer keeps Terraform confirmation.
-make tf-apply
+make tf-plan-l1
+terraform show .tfplans/portfolio/l1-platform.tfplan
+make tf-apply-l1
+
+# L2 planning first ensures the immutable ECR image, then packages Lambda from
+# the same Git commit, and records the package checksum in plan metadata.
+make tf-plan-l2 DEPLOY_COMMIT="$DEPLOY_COMMIT"
+terraform show .tfplans/portfolio/l2-application-vantage-ai.tfplan
+make tf-apply-l2 DEPLOY_COMMIT="$DEPLOY_COMMIT"
 ```
 
-### Step 3 — Build and deploy the app
+Every saved plan has a SHA-256 manifest. Apply verifies that manifest before it
+invokes Terraform, so even a one-byte plan change fails closed. `tf-apply-l2`
+also refuses to continue if the commit, image tag, verified ECR digest, or
+Lambda package checksum differs from the saved transaction. `.tfplans/` is
+ignored because plans can contain sensitive values. Remove those local plans
+after the validation window.
+
+The API image is built from `git archive DEPLOY_COMMIT`, not the working tree,
+and carries `org.opencontainers.image.revision=<full SHA>`. Uncommitted changes
+are deliberately excluded—commit them before choosing the deployment commit.
+
+### Immutable image retries
+
+`.tfplans/portfolio/deployment-provenance.json` is the single-owner local trust
+root for a deployment transaction. It records the full commit, canonical tag,
+region, repository, and ECR-reported digest. Keep the ignored directory under
+the deployer's exclusive control; cloud labels alone are not a trust root.
+
+`make ensure-image` queries the SHA tag before publishing:
+
+- a missing tag is built from the Git archive and pushed once;
+- an existing tag is reused only when its ECR digest matches trusted local
+  metadata and the pulled `RepoDigest` and revision label match that digest and
+  the full deployment commit;
+- authentication, network, unknown-tag, pull, inspection, and revision mismatch
+  errors fail closed and never fall through to a push.
+
+ECS receives `repository@sha256:...`, never a mutable tag reference. If the
+local provenance file is lost after its tag exists, reuse fails closed. Start a
+new transaction from a new commit, or perform an explicit controlled recovery
+that independently re-establishes and reviews the trusted digest; the workflow
+never reconstructs trust automatically from the image label.
+
+After a transient failure, repair credentials/network and rerun the same target.
+Never delete or retag an immutable image to force a retry.
+
+### Step 3 — Verify the deployed edge and dashboard
 
 ```bash
-# ECR repository/registry and ECS cluster/service names come from Terraform outputs.
-make push && make deploy
+# The saved L2 transaction already verified the image before creating ECS.
+make demo-info
 
-ALB=$(terraform -chdir=terraform/layers/l1-platform output -raw shared_alb_dns_name)
+CLOUDFRONT=$(terraform -chdir=terraform/layers/l2-application/vantage-ai output -raw cloudfront_url)
 
-curl "http://$ALB/health"
+curl "$CLOUDFRONT/health"
 # → {"status":"ok","version":"1.0.0"}
 ```
 
-### Step 4 — Enable Bedrock model access
+### Step 4 — Configure Bedrock model access
 
 1. AWS Console → Bedrock → Model access → Request access
 2. Search "Claude Haiku 4.5" → check → Submit
 3. Wait 2–5 minutes
 
+Populate `bedrock_invoke_resource_arns` with the exact inference-profile ARN and
+every destination foundation-model ARN reported by the actual profile. IAM must
+allow both the profile and destinations; never guess destination regions.
+
 ### Step 5 — Verify end to end
 
 ```bash
-ALB="http://<your-alb-dns>"
-API_KEY="<your-short-lived-api-key>"
+BASE_URL=$(terraform -chdir=terraform/layers/l2-application/vantage-ai output -raw cloudfront_url)
+API_KEY_SECRET=$(terraform -chdir=terraform/layers/l2-application/vantage-ai output -raw api_key_secret_name)
+API_KEY=$(aws secretsmanager get-secret-value --secret-id "$API_KEY_SECRET" --query SecretString --output text)
 
 # Upload
-DOC_ID=$(curl -s -X POST "$ALB/documents/upload" \
+DOC_ID=$(curl -s -X POST "$BASE_URL/documents/upload" \
   -H "X-API-Key: $API_KEY" \
   -F "file=@sample-data.csv" | python3 -c "import sys,json; print(json.load(sys.stdin)['document_id'])")
 
@@ -176,17 +245,17 @@ DOC_ID=$(curl -s -X POST "$ALB/documents/upload" \
 sleep 5
 
 # Status
-curl -H "X-API-Key: $API_KEY" "$ALB/documents/$DOC_ID/status"
+curl -H "X-API-Key: $API_KEY" "$BASE_URL/documents/$DOC_ID/status"
 # → "status": "completed"
 
 # Records
-curl -H "X-API-Key: $API_KEY" "$ALB/records?document_id=$DOC_ID"
+curl -H "X-API-Key: $API_KEY" "$BASE_URL/records?document_id=$DOC_ID"
 
 # AI Analysis
 curl -X POST -H "X-API-Key: $API_KEY" \
-  "$ALB/insights/analyze?document_id=$DOC_ID"
+  "$BASE_URL/insights/analyze?document_id=$DOC_ID"
 curl -H "X-API-Key: $API_KEY" \
-  "$ALB/insights/anomalies?document_id=$DOC_ID"
+  "$BASE_URL/insights/anomalies?document_id=$DOC_ID"
 ```
 
 ## CI/CD
@@ -204,11 +273,19 @@ make tf-destroy
 # Destroys L2 → L1 → L0, with Terraform confirmation for each layer.
 ```
 
+Destroy is intentionally independent of Docker, ECR image availability, and the
+current Git commit; it supplies a validation-only placeholder image tag while
+Terraform destroys the deployed state.
+
 The protected bootstrap bucket is not part of routine environment cleanup. See
 [ADR 001](docs/adr/001-ephemeral-portfolio-environment.md) and
-[ADR 002](docs/adr/002-terraform-state-and-layering.md) for lifecycle and state
-ownership decisions. This repository configuration has been validated offline;
-these instructions do not claim that a real AWS deployment has occurred.
+[ADR 002](docs/adr/002-terraform-state-and-layering.md),
+[ADR 003](docs/adr/003-low-cost-network-and-edge.md), and
+[ADR 004](docs/adr/004-managed-secrets-and-terraform-state.md) for lifecycle,
+network, cost, and secret decisions. The configuration has been validated
+without AWS credentials or a backend connection; a cold Terraform provider
+cache still requires registry network access.
+These instructions do not claim that a real AWS deployment has occurred.
 
 ## Project Structure
 
@@ -247,6 +324,8 @@ these instructions do not claim that a real AWS deployment has occurred.
 |---|---|
 | ECS task won't start (CannotPullContainerError) | Rebuild with `--platform linux/amd64` |
 | Bedrock AccessDeniedException (Legacy model) | Use Inference Profile: `au.anthropic.claude-haiku-4-5-20251001-v1:0` |
-| Bedrock AccessDeniedException (Marketplace) | Ensure IAM role has `aws-marketplace:ViewSubscriptions` + `aws-marketplace:Subscribe` |
+| Bedrock AccessDeniedException | Confirm the exact configured inference-profile ARN is enabled and matches IAM |
 | Lambda not triggering | Check SQS → Lambda event source mapping exists |
 | Lambda fails, DLQ has messages | RDS security group may not allow Lambda SG |
+| Direct ALB request times out | Expected: ALB port 80 accepts only the CloudFront origin-facing prefix list |
+| Lambda cannot reach AWS APIs | Confirm S3 gateway and Secrets Manager interface endpoints and endpoint SG |

@@ -1,33 +1,5 @@
 data "aws_region" "current" {}
 
-resource "aws_security_group" "app" {
-  name        = "${var.name_prefix}-api-sg"
-  description = "Security group for ${var.name_prefix} API service"
-
-  vpc_id = var.vpc_id
-
-  tags = {
-    Name  = "${var.name_prefix}-api-sg"
-    Layer = "l2-application"
-  }
-}
-
-resource "aws_vpc_security_group_ingress_rule" "app_from_alb" {
-  security_group_id            = aws_security_group.app.id
-  description                  = "FastAPI traffic from shared ALB"
-  referenced_security_group_id = var.alb_security_group_id
-  ip_protocol                  = "tcp"
-  from_port                    = var.container_port
-  to_port                      = var.container_port
-}
-
-resource "aws_vpc_security_group_egress_rule" "app_allow_all" {
-  security_group_id = aws_security_group.app.id
-  description       = "Allow all outbound traffic"
-  ip_protocol       = "-1"
-  cidr_ipv4         = "0.0.0.0/0"
-}
-
 resource "aws_lb_target_group" "app" {
   name        = "${var.name_prefix}-api-tg"
   port        = var.container_port
@@ -80,7 +52,7 @@ resource "aws_ecs_task_definition" "app" {
   container_definitions = jsonencode([
     {
       name      = "api"
-      image     = "${var.ecr_repository_url}:${var.image_tag}"
+      image     = "${var.ecr_repository_url}@${var.image_digest}"
       essential = true
       portMappings = [
         {
@@ -102,12 +74,26 @@ resource "aws_ecs_task_definition" "app" {
           value = var.sqs_queue_url
         },
         {
-          name  = "DATABASE_URL"
-          value = var.database_url
+          name  = "DB_SECRET_ARN"
+          value = var.database_secret_arn
+        },
+        {
+          name  = "DB_NAME"
+          value = var.database_name
+        },
+        {
+          name  = "DOCUMENT_BUCKET"
+          value = var.document_bucket_name
         },
         {
           name  = "BEDROCK_MODEL_ID"
           value = var.bedrock_model_id
+        }
+      ]
+      secrets = [
+        {
+          name      = "API_KEY"
+          valueFrom = var.api_key_secret_arn
         }
       ]
 
@@ -137,7 +123,7 @@ resource "aws_ecs_service" "app" {
 
   network_configuration {
     subnets          = var.subnet_ids
-    security_groups  = [aws_security_group.app.id]
+    security_groups  = [var.app_security_group_id]
     assign_public_ip = var.assign_public_ip
   }
 

@@ -6,6 +6,7 @@ from sqlalchemy import create_engine, inspect
 
 from alembic import command
 from alembic.config import Config
+from app.core.database import resolve_database_url
 
 LEGACY_SCHEMA_COLUMNS = {
     "documents": {
@@ -51,9 +52,12 @@ def upgrade_database(
     config_path: str = "alembic.ini",
 ) -> None:
     """Upgrade a fresh database or adopt the known pre-Alembic schema."""
-    resolved_url = database_url or os.getenv("DATABASE_URL")
-    if not resolved_url:
-        raise RuntimeError("DATABASE_URL is required to run database migrations")
+    resolved_url = resolve_database_url(
+        database_url=database_url or os.getenv("DATABASE_URL", ""),
+        secret_arn=os.getenv("DB_SECRET_ARN", ""),
+        database_name=os.getenv("DB_NAME", "vantage"),
+        region=os.getenv("AWS_DEFAULT_REGION"),
+    )
 
     config = Config(config_path)
     config.set_main_option("sqlalchemy.url", resolved_url)

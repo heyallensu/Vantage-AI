@@ -14,6 +14,16 @@ terraform {
 provider "aws" {
   region              = var.aws_region
   allowed_account_ids = [var.allowed_account_id]
+
+  default_tags {
+    tags = {
+      Project     = var.project_name
+      Environment = terraform.workspace
+      Owner       = var.owner
+      ManagedBy   = "Terraform"
+      ExpiresAt   = var.expires_at
+    }
+  }
 }
 
 data "aws_caller_identity" "current" {}
@@ -37,7 +47,6 @@ module "vpc" {
   vpc_cidr             = var.vpc_cidr
   public_subnet_cidrs  = var.public_subnet_cidrs
   private_subnet_cidrs = var.private_subnet_cidrs
-  enable_nat_gateway   = var.enable_nat_gateway
 }
 
 module "security_baseline" {

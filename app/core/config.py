@@ -21,6 +21,8 @@ class Settings:
     api_key: str = field(repr=False)
     aws_region: str
     database_url: str = field(repr=False)
+    db_secret_arn: str = field(repr=False)
+    db_name: str
     document_bucket: str
     sqs_queue_url: str
     bedrock_model_id: str
@@ -43,6 +45,8 @@ class Settings:
                 "DATABASE_URL",
                 DEFAULT_DATABASE_URL if environment == "local" else "",
             ).strip(),
+            db_secret_arn=values.get("DB_SECRET_ARN", "").strip(),
+            db_name=values.get("DB_NAME", "vantage").strip(),
             document_bucket=values.get("DOCUMENT_BUCKET", "").strip(),
             sqs_queue_url=values.get("SQS_QUEUE_URL", "").strip(),
             bedrock_model_id=values.get(
@@ -58,7 +62,6 @@ class Settings:
         required = {
             "API_KEY": self.api_key,
             "AWS_DEFAULT_REGION": self.aws_region,
-            "DATABASE_URL": self.database_url,
             "DOCUMENT_BUCKET": self.document_bucket,
             "SQS_QUEUE_URL": self.sqs_queue_url,
         }
@@ -68,6 +71,10 @@ class Settings:
         if missing:
             raise ConfigurationError(
                 f"Missing required runtime configuration: {', '.join(sorted(missing))}"
+            )
+        if not self.is_local and not (self.database_url or self.db_secret_arn):
+            raise ConfigurationError(
+                "Missing required runtime configuration: DATABASE_URL or DB_SECRET_ARN"
             )
 
 

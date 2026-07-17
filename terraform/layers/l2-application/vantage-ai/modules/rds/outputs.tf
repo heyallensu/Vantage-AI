@@ -19,5 +19,10 @@ output "db_name" {
 }
 
 output "database_security_group_id" {
-  value = aws_security_group.database.id
+  value = var.database_security_group_id
+}
+
+output "database_secret_arn" {
+  value     = aws_db_instance.this.master_user_secret[0].secret_arn
+  sensitive = true
 }

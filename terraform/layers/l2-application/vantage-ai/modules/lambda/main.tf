@@ -1,23 +1,5 @@
-resource "aws_security_group" "lambda" {
-  name_prefix = "${var.name_prefix}-lambda-sg"
-  description = "Security group for lambda function"
-  vpc_id      = var.vpc_id
-
-  tags = {
-    Name  = "${var.name_prefix}-lambda-sg"
-    Layer = "l2-application"
-  }
-}
-
-resource "aws_vpc_security_group_egress_rule" "all" {
-  security_group_id = aws_security_group.lambda.id
-  description       = "Allow all outbound traffic"
-  ip_protocol       = "-1"
-  cidr_ipv4         = "0.0.0.0/0"
-}
-
 resource "aws_cloudwatch_log_group" "lambda" {
-  name              = "/aws/lambda/${var.name_prefix}-lambda"
+  name              = "/aws/lambda/${var.name_prefix}-processor"
   retention_in_days = 14
 
   tags = {
@@ -39,13 +21,14 @@ resource "aws_lambda_function" "processor" {
   memory_size = var.lambda_memory_size
 
   vpc_config {
-    security_group_ids = [aws_security_group.lambda.id]
+    security_group_ids = [var.lambda_security_group_id]
     subnet_ids         = var.private_subnet_ids
   }
 
   environment {
     variables = {
-      DATABASE_URL = var.database_url
+      DB_SECRET_ARN = var.database_secret_arn
+      DB_NAME       = var.database_name
     }
   }
 

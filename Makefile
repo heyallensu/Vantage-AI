@@ -1,8 +1,14 @@
 ENV ?= portfolio
+override ENV := $(value ENV)
 APP ?= vantage-ai
 PYTHON ?= .venv/bin/python
+DEPLOY_COMMIT ?= HEAD
+override DEPLOY_COMMIT := $(value DEPLOY_COMMIT)
+IMAGE_TAG ?=
+override IMAGE_TAG := $(value IMAGE_TAG)
 AWS_REGION ?= ap-southeast-2
-IMAGE_TAG ?= latest
+override AWS_REGION := $(value AWS_REGION)
+export DEPLOY_COMMIT IMAGE_TAG AWS_REGION
 
 SUPPORTED_ENV := portfolio
 ACCOUNT_FILE := .aws-account-id
@@ -13,6 +19,7 @@ L1_DIR := terraform/layers/l1-platform
 L2_DIR := terraform/layers/l2-application/vantage-ai
 LAMBDA_DIR := lambda/processor
 TF_PLUGIN_CACHE_DIR ?= /tmp/vantage-ai-terraform-plugin-cache
+TF_PLAN_DIR := $(CURDIR)/.tfplans/$(ENV)
 
 L0_TFVARS := $(ENV_DIR)/l0-foundation.tfvars
 L1_TFVARS := $(ENV_DIR)/l1-platform.tfvars
@@ -27,10 +34,11 @@ ifneq ($(ENV),$(SUPPORTED_ENV))
 $(error Unsupported ENV '$(ENV)'; only '$(SUPPORTED_ENV)' is allowed)
 endif
 
-.PHONY: dev down logs db-migrate db-current lint test audit check lambda-package build push deploy destroy \
-	bootstrap tf-fmt tf-init tf-workspace tf-check tf-plan tf-apply tf-destroy \
+.PHONY: dev down logs db-migrate db-current lint test audit check lambda-package build ensure-image push deploy demo-info destroy validate-deployment-inputs \
+	bootstrap tf-fmt tf-init tf-workspace tf-check tf-plan tf-apply tf-destroy tf-plan-l0 tf-apply-l0 \
+	tf-plan-l1 tf-apply-l1 tf-plan-l2 tf-apply-l2 require-plan-dir \
 	require-account verify-aws-context require-portfolio-workspaces \
-	require-layer-config require-bootstrap-config
+	require-layer-config require-bootstrap-config require-source-provenance
 
 dev:
 	docker compose up --build
@@ -51,7 +59,7 @@ lint:
 	$(PYTHON) -m ruff check app alembic lambda scripts tests
 
 test:
-	AWS_EC2_METADATA_DISABLED=true AWS_DEFAULT_REGION=$(AWS_REGION) ENV=local $(PYTHON) -m pytest --cov=app --cov-report=term-missing --cov-fail-under=70
+	AWS_EC2_METADATA_DISABLED=true AWS_DEFAULT_REGION=ap-southeast-2 ENV=local $(PYTHON) -m pytest --cov=app --cov-report=term-missing --cov-fail-under=70
 
 audit:
 	$(PYTHON) -m pip_audit -r app/requirements.txt
@@ -59,8 +67,8 @@ audit:
 
 check: lint test audit
 
-lambda-package:
-	docker run --rm --platform linux/amd64 -v "$$(pwd)/$(LAMBDA_DIR):/var/task" public.ecr.aws/sam/build-python3.12:latest /bin/sh -c "rm -rf package package.zip && pip install -r requirements.txt -t package && cp handler.py package/ && cd package && zip -r ../package.zip ."
+lambda-package: require-source-provenance
+	.venv/bin/python -m scripts.deploy.workflow package-lambda
 
 require-account:
 	@test -s $(ACCOUNT_FILE) || { echo "Missing $(ACCOUNT_FILE); add the permitted 12-digit AWS account ID locally." >&2; exit 1; }
@@ -77,6 +85,15 @@ require-layer-config:
 
 require-bootstrap-config:
 	@test -f $(BOOTSTRAP_DIR)/terraform.tfvars || { echo "Missing $(BOOTSTRAP_DIR)/terraform.tfvars; copy terraform.tfvars.example and replace placeholders." >&2; exit 1; }
+
+require-source-provenance:
+	@.venv/bin/python -m scripts.deploy.workflow validate-inputs
+
+validate-deployment-inputs:
+	@.venv/bin/python -m scripts.deploy.workflow validate-inputs
+
+require-plan-dir:
+	@mkdir -p $(TF_PLAN_DIR)
 
 # One-time local-state bootstrap. Terraform prompts before making AWS changes.
 bootstrap: verify-aws-context require-bootstrap-config
@@ -107,29 +124,54 @@ tf-workspace: tf-init
 	$(ACCOUNT_ENV) terraform -chdir=$(L1_DIR) workspace select $(ENV) || $(ACCOUNT_ENV) terraform -chdir=$(L1_DIR) workspace new $(ENV)
 	$(ACCOUNT_ENV) terraform -chdir=$(L2_DIR) workspace select $(ENV) || $(ACCOUNT_ENV) terraform -chdir=$(L2_DIR) workspace new $(ENV)
 
-tf-plan: tf-workspace
-	$(ACCOUNT_ENV) terraform -chdir=$(L0_DIR) plan -input=false -var-file=../../environments/$(ENV)/l0-foundation.tfvars
-	$(ACCOUNT_ENV) terraform -chdir=$(L1_DIR) plan -input=false -var-file=../../environments/$(ENV)/l1-platform.tfvars
-	$(ACCOUNT_ENV) terraform -chdir=$(L2_DIR) plan -input=false -var-file=../../../environments/$(ENV)/l2-application-vantage-ai.tfvars
+tf-plan:
+	@echo "Monolithic tf-plan is disabled. Use tf-plan-l0/apply-l0, then L1, then L2." >&2
+	@exit 2
 
-tf-apply: tf-workspace
-	$(ACCOUNT_ENV) terraform -chdir=$(L0_DIR) apply -input=false -var-file=../../environments/$(ENV)/l0-foundation.tfvars
-	$(ACCOUNT_ENV) terraform -chdir=$(L1_DIR) apply -input=false -var-file=../../environments/$(ENV)/l1-platform.tfvars
-	$(ACCOUNT_ENV) terraform -chdir=$(L2_DIR) apply -input=false -var-file=../../../environments/$(ENV)/l2-application-vantage-ai.tfvars
+tf-apply:
+	@echo "Monolithic tf-apply is disabled. Apply only the reviewed saved layer plans." >&2
+	@exit 2
 
-tf-destroy: tf-workspace
-	$(ACCOUNT_ENV) terraform -chdir=$(L2_DIR) destroy -input=false -var-file=../../../environments/$(ENV)/l2-application-vantage-ai.tfvars
-	$(ACCOUNT_ENV) terraform -chdir=$(L1_DIR) destroy -input=false -var-file=../../environments/$(ENV)/l1-platform.tfvars
-	$(ACCOUNT_ENV) terraform -chdir=$(L0_DIR) destroy -input=false -var-file=../../environments/$(ENV)/l0-foundation.tfvars
+tf-plan-l0: require-plan-dir
+	.venv/bin/python -m scripts.deploy.workflow plan-l0
+
+tf-apply-l0:
+	.venv/bin/python -m scripts.deploy.workflow apply-l0
+
+tf-plan-l1: require-plan-dir
+	.venv/bin/python -m scripts.deploy.workflow plan-l1
+
+tf-apply-l1:
+	.venv/bin/python -m scripts.deploy.workflow apply-l1
+
+tf-plan-l2: require-plan-dir
+	.venv/bin/python -m scripts.deploy.workflow plan-l2
+
+tf-apply-l2:
+	.venv/bin/python -m scripts.deploy.workflow apply-l2
+
+tf-destroy:
+	.venv/bin/python -m scripts.deploy.workflow destroy
 
 destroy: tf-destroy
 
-# Build locally; ECR coordinates are intentionally resolved only by `push`.
-build:
-	docker build --platform linux/amd64 -f app/Dockerfile -t $(APP):$(IMAGE_TAG) .
+# Build only committed files from DEPLOY_COMMIT; .dockerignore remains a second boundary.
+build: require-source-provenance
+	.venv/bin/python -m scripts.deploy.workflow build-image
 
-push: verify-aws-context require-portfolio-workspaces build
-	@ecr_repository_url="$$( $(ACCOUNT_ENV) terraform -chdir=$(L1_DIR) output -raw ecr_repository_url )"; ecr_registry="$${ecr_repository_url%/*}"; aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin "$$ecr_registry"; docker tag $(APP):$(IMAGE_TAG) "$$ecr_repository_url:$(IMAGE_TAG)"; docker push "$$ecr_repository_url:$(IMAGE_TAG)"
+ensure-image:
+	.venv/bin/python -m scripts.deploy.workflow ensure-image
 
-deploy: verify-aws-context require-portfolio-workspaces
-	@ecs_cluster="$$( $(ACCOUNT_ENV) terraform -chdir=$(L1_DIR) output -raw ecs_cluster_name )"; ecs_service="$$( $(ACCOUNT_ENV) terraform -chdir=$(L2_DIR) output -raw ecs_service_name )"; aws ecs update-service --region $(AWS_REGION) --cluster "$$ecs_cluster" --service "$$ecs_service" --force-new-deployment
+push: ensure-image
+
+deploy:
+	@echo "Standalone deploy is disabled. Apply the reviewed saved L2 plan with tf-apply-l2." >&2
+	@exit 2
+
+demo-info: require-portfolio-workspaces
+	@echo "CloudFront URL: $$(terraform -chdir=$(L2_DIR) output -raw cloudfront_url)"
+	@echo "API key secret: $$(terraform -chdir=$(L2_DIR) output -raw api_key_secret_name)"
+	@echo "Document bucket: $$(terraform -chdir=$(L2_DIR) output -raw document_bucket_name)"
+	@echo "Operations dashboard: $$(terraform -chdir=$(L2_DIR) output -raw operations_dashboard_url)"
+	@echo "Cleanup identifiers:"
+	@terraform -chdir=$(L2_DIR) output -json cleanup_identifiers

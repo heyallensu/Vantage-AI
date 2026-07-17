@@ -18,6 +18,19 @@ variable "project_name" {
   default = "vantage-ai"
 }
 
+variable "owner" {
+  type = string
+}
+
+variable "expires_at" {
+  type = string
+
+  validation {
+    condition     = can(regex("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", var.expires_at))
+    error_message = "expires_at must use YYYY-MM-DD."
+  }
+}
+
 variable "app_name" {
   type    = string
   default = "vantage-ai"
@@ -61,11 +74,6 @@ variable "db_name" {
 variable "db_username" {
   type    = string
   default = "vantage"
-}
-
-variable "db_password" {
-  type      = string
-  sensitive = true
 }
 
 variable "db_instance_class" {
@@ -121,6 +129,11 @@ variable "app_container_port" {
 variable "app_desired_count" {
   type    = number
   default = 1
+
+  validation {
+    condition     = var.app_desired_count == 1
+    error_message = "The low-cost portfolio environment runs exactly one ECS task."
+  }
 }
 
 variable "app_cpu" {
@@ -134,8 +147,23 @@ variable "app_memory" {
 }
 
 variable "app_image_tag" {
-  type    = string
-  default = "latest"
+  description = "Immutable Git commit SHA used as the ECR image tag."
+  type        = string
+
+  validation {
+    condition     = var.app_image_tag != "latest" && can(regex("^[0-9a-f]{7,40}$", var.app_image_tag))
+    error_message = "app_image_tag must be a 7-40 character lowercase Git SHA and must not be latest."
+  }
+}
+
+variable "app_image_digest" {
+  description = "Trusted immutable ECR digest pinned into the ECS task definition."
+  type        = string
+
+  validation {
+    condition     = can(regex("^sha256:[0-9a-f]{64}$", var.app_image_digest))
+    error_message = "app_image_digest must be a canonical sha256 ECR digest."
+  }
 }
 
 variable "health_check_path" {
@@ -146,6 +174,52 @@ variable "health_check_path" {
 variable "bedrock_model_id" {
   type    = string
   default = "anthropic.claude-haiku-20240307-v1:0"
+}
+
+variable "bedrock_invoke_resource_arns" {
+  description = "Exact inference-profile and destination foundation-model ARNs allowed for Bedrock invocation."
+  type        = list(string)
+
+  validation {
+    condition = (
+      length(var.bedrock_invoke_resource_arns) >= 2 &&
+      anytrue([for arn in var.bedrock_invoke_resource_arns : can(regex(":inference-profile/", arn))]) &&
+      anytrue([for arn in var.bedrock_invoke_resource_arns : can(regex(":foundation-model/", arn))]) &&
+      alltrue([
+        for arn in var.bedrock_invoke_resource_arns :
+        can(regex("^arn:(aws|aws-us-gov|aws-cn):bedrock:[a-z0-9-]+:([0-9]{12})?:(inference-profile|foundation-model)/[^[:space:]]+$", arn))
+      ])
+    )
+    error_message = "bedrock_invoke_resource_arns must contain exact inference-profile and destination foundation-model ARNs."
+  }
+}
+
+variable "document_retention_days" {
+  type    = number
+  default = 7
+
+  validation {
+    condition     = var.document_retention_days >= 1
+    error_message = "document_retention_days must be at least one day."
+  }
+}
+
+variable "cloudfront_price_class" {
+  type    = string
+  default = "PriceClass_100"
+
+  validation {
+    condition     = contains(["PriceClass_100", "PriceClass_200", "PriceClass_All"], var.cloudfront_price_class)
+    error_message = "cloudfront_price_class must be a supported CloudFront price class."
+  }
+}
+
+variable "frontend_index_html" {
+  description = "Small static landing page stored in the private frontend bucket."
+  type        = string
+  default     = <<-HTML
+    <!doctype html><html lang="en"><meta charset="utf-8"><title>Vantage AI</title><main><h1>Vantage AI</h1><p>Intelligent document processing portfolio environment.</p><p><a href="/docs">Open API documentation</a></p></main></html>
+  HTML
 }
 
 variable "alarm_actions" {

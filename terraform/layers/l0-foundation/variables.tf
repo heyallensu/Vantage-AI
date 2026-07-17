@@ -20,6 +20,21 @@ variable "project_name" {
   default     = "vantage-ai"
 }
 
+variable "owner" {
+  description = "Owner tag used for cost attribution and cleanup accountability."
+  type        = string
+}
+
+variable "expires_at" {
+  description = "ISO-8601 date after which the ephemeral environment should be removed."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", var.expires_at))
+    error_message = "expires_at must use YYYY-MM-DD."
+  }
+}
+
 variable "vpc_cidr" {
   description = "The CIDR block for the VPC."
   type        = string
@@ -34,10 +49,4 @@ variable "public_subnet_cidrs" {
 variable "private_subnet_cidrs" {
   type    = list(string)
   default = ["10.20.10.0/24", "10.20.11.0/24"]
-}
-
-variable "enable_nat_gateway" {
-  description = "Whether to create a NAT Gateway for private subnets."
-  type        = bool
-  default     = false
 }

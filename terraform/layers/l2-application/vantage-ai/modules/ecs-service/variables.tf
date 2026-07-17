@@ -18,9 +18,7 @@ variable "assign_public_ip" {
   type = bool
 }
 
-variable "alb_security_group_id" {
-  type = string
-}
+variable "app_security_group_id" { type = string }
 
 variable "shared_listener_arn" {
   type = string
@@ -62,8 +60,13 @@ variable "memory" {
   type = number
 }
 
-variable "image_tag" {
+variable "image_digest" {
   type = string
+
+  validation {
+    condition     = can(regex("^sha256:[0-9a-f]{64}$", var.image_digest))
+    error_message = "image_digest must be a canonical sha256 ECR digest."
+  }
 }
 
 variable "health_check_path" {
@@ -74,10 +77,10 @@ variable "sqs_queue_url" {
   type = string
 }
 
-variable "database_url" {
-  type      = string
-  sensitive = true
-}
+variable "database_secret_arn" { type = string }
+variable "database_name" { type = string }
+variable "document_bucket_name" { type = string }
+variable "api_key_secret_arn" { type = string }
 
 variable "bedrock_model_id" {
   type = string

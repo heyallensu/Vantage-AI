@@ -76,6 +76,7 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
   restrict_public_buckets = true
 }
 
+# trivy:ignore:AWS-0132 ADR 004 accepts SSE-S3 for a short-lived personal state bucket instead of a monthly billed CMK.
 resource "aws_s3_bucket_server_side_encryption_configuration" "terraform_state" {
   bucket = aws_s3_bucket.terraform_state.id
 

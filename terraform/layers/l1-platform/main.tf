@@ -14,6 +14,16 @@ terraform {
 provider "aws" {
   region              = var.aws_region
   allowed_account_ids = [var.allowed_account_id]
+
+  default_tags {
+    tags = {
+      Project     = var.project_name
+      Environment = terraform.workspace
+      Owner       = var.owner
+      ManagedBy   = "Terraform"
+      ExpiresAt   = var.expires_at
+    }
+  }
 }
 
 data "aws_caller_identity" "current" {}
@@ -61,7 +71,9 @@ module "shared_alb" {
 
   name_prefix       = local.name_prefix
   vpc_id            = data.terraform_remote_state.l0.outputs.vpc_id
+  vpc_cidr          = data.terraform_remote_state.l0.outputs.vpc_cidr
   public_subnet_ids = data.terraform_remote_state.l0.outputs.public_subnet_ids
+  application_port  = var.application_port
 }
 
 module "monitoring" {
@@ -69,4 +81,5 @@ module "monitoring" {
 
   name_prefix        = local.name_prefix
   log_retention_days = var.log_retention_days
+  ecs_cluster_name   = module.ecs_cluster.cluster_name
 }

@@ -1,7 +1,8 @@
-.git 
-__pycache__
-*.pyc
-*.pyo
-.venv
-.terraform
-*.tfstate
+*
+!app/
+!app/**
+!alembic/
+!alembic/**
+!alembic.ini
+!scripts/
+!scripts/**

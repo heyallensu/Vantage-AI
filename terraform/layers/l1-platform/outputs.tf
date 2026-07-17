@@ -49,3 +49,11 @@ output "ecs_platform_log_group_name" {
 output "ecs_platform_log_group_arn" {
   value = module.monitoring.ecs_platform_log_group_arn
 }
+
+output "operations_dashboard_name" {
+  value = module.monitoring.operations_dashboard_name
+}
+
+output "operations_dashboard_url" {
+  value = module.monitoring.operations_dashboard_url
+}

@@ -7,7 +7,7 @@ output "function_arn" {
 }
 
 output "lambda_security_group_id" {
-  value = aws_security_group.lambda.id
+  value = var.lambda_security_group_id
 }
 
 output "event_source_mapping_uuid" {
