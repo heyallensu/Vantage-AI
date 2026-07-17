@@ -385,6 +385,66 @@ def test_matching_account_and_portfolio_workspaces_pass_preflight(
     assert all(command[-2:] == ["workspace", "show"] for command in commands[1:])
 
 
+def test_destroy_skips_empty_partial_layers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = deployment_workflow.DeploymentContext(ACCOUNT_ID, "portfolio")
+    destroyed_layers = []
+
+    def fake_terraform(
+        layer: str,
+        arguments: list[str],
+        *,
+        context: deployment_workflow.DeploymentContext | None = None,
+        capture: bool = False,
+    ) -> subprocess.CompletedProcess:
+        del capture
+        assert context == deployment_workflow.DeploymentContext(ACCOUNT_ID, "portfolio")
+        if arguments == ["state", "list"]:
+            return _completed(stdout="aws_vpc.this\n" if layer == "l0" else "")
+        assert arguments[0] == "destroy"
+        destroyed_layers.append(layer)
+        return _completed()
+
+    monkeypatch.setattr(deployment_workflow, "deployment_preflight", lambda: context)
+    monkeypatch.setattr(deployment_workflow, "_terraform", fake_terraform)
+
+    deployment_workflow.destroy()
+
+    assert destroyed_layers == ["l0"]
+
+
+def test_destroy_continues_lower_layers_after_upper_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = deployment_workflow.DeploymentContext(ACCOUNT_ID, "portfolio")
+    destroy_attempts = []
+
+    def fake_terraform(
+        layer: str,
+        arguments: list[str],
+        *,
+        context: deployment_workflow.DeploymentContext | None = None,
+        capture: bool = False,
+    ) -> subprocess.CompletedProcess:
+        del capture
+        assert context == deployment_workflow.DeploymentContext(ACCOUNT_ID, "portfolio")
+        if arguments == ["state", "list"]:
+            return _completed(stdout=f"resource.{layer}\n")
+        destroy_attempts.append(layer)
+        if layer == "l2":
+            raise subprocess.CalledProcessError(1, ["terraform", "destroy"])
+        return _completed()
+
+    monkeypatch.setattr(deployment_workflow, "deployment_preflight", lambda: context)
+    monkeypatch.setattr(deployment_workflow, "_terraform", fake_terraform)
+
+    with pytest.raises(deployment_workflow.WorkflowError, match="l2"):
+        deployment_workflow.destroy()
+
+    assert destroy_attempts == ["l2", "l1", "l0"]
+
+
 def test_plan_and_apply_bind_account_and_workspace(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

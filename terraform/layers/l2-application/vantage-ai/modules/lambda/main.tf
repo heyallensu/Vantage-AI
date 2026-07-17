@@ -14,8 +14,10 @@ resource "aws_lambda_function" "processor" {
   handler       = var.lambda_handler
   runtime       = var.lambda_runtime
 
-  filename         = var.lambda_package_path
-  source_code_hash = filebase64sha256(var.lambda_package_path)
+  filename = var.lambda_package_path
+  # A fresh emergency-cleanup runner has no build artifact. Planning always
+  # packages Lambda first and checksum-binds it; destroy only needs state.
+  source_code_hash = fileexists(var.lambda_package_path) ? filebase64sha256(var.lambda_package_path) : null
 
   timeout     = var.lambda_timeout_seconds
   memory_size = var.lambda_memory_size

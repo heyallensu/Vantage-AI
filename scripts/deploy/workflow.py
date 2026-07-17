@@ -421,27 +421,37 @@ def apply_l2() -> None:
 
 def destroy() -> None:
     context = deployment_preflight()
-    _terraform(
-        "l2",
-        [
+    destroy_arguments = {
+        "l2": [
             "destroy",
             "-input=false",
             f"-var-file={LAYERS['l2']['tfvars']}",
             f"-var=app_image_tag={DESTROY_IMAGE_TAG}",
             f"-var=app_image_digest={DESTROY_IMAGE_DIGEST}",
         ],
-        context=context,
-    )
-    _terraform(
-        "l1",
-        ["destroy", "-input=false", f"-var-file={LAYERS['l1']['tfvars']}"],
-        context=context,
-    )
-    _terraform(
-        "l0",
-        ["destroy", "-input=false", f"-var-file={LAYERS['l0']['tfvars']}"],
-        context=context,
-    )
+        "l1": ["destroy", "-input=false", f"-var-file={LAYERS['l1']['tfvars']}"],
+        "l0": ["destroy", "-input=false", f"-var-file={LAYERS['l0']['tfvars']}"],
+    }
+    failed_layers = []
+    for layer in ("l2", "l1", "l0"):
+        try:
+            state = _terraform(
+                layer,
+                ["state", "list"],
+                context=context,
+                capture=True,
+            )
+            if not state.stdout.strip():
+                print(f"destroy_skipped layer={layer} reason=empty_state")
+                continue
+            _terraform(layer, destroy_arguments[layer], context=context)
+        except (OSError, subprocess.CalledProcessError):
+            failed_layers.append(layer)
+            print(f"destroy_failed layer={layer}")
+    if failed_layers:
+        raise WorkflowError(
+            "Destroy failed for layer(s): " + ", ".join(failed_layers)
+        )
 
 
 def main() -> int:

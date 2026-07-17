@@ -19,7 +19,7 @@ Vantage AI is a production-oriented project for demonstrating the engineering ar
 
 | Quality signal | Engineering evidence |
 |---|---|
-| Application behavior | 83 automated tests across API, migrations, storage, security, queue contracts, Lambda, and deployment safeguards |
+| Application behavior | 85 automated tests across API, migrations, storage, security, queue contracts, Lambda, and deployment safeguards |
 | Test depth | 88.46% branch-aware Python coverage; minimum gate remains 70% |
 | Database evolution | Full Alembic history tested against PostgreSQL 16 in CI |
 | Infrastructure | Bootstrap plus L0/L1/L2 Terraform roots initialize without backend credentials and validate successfully |

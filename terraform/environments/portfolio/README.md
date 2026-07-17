@@ -33,3 +33,31 @@ reviewed controlled recovery; image labels alone cannot restore trust. Cleanup
 is `make tf-destroy`; it uses a fixed validation-only image tag and digest and
 does not require Docker, ECR image availability, or the current deployment
 commit.
+
+## GitHub Environment configuration
+
+Create a GitHub Environment named `portfolio`, then configure these Environment
+variables. A required-reviewer rule also pauses the scheduled cleanup workflow,
+so use one only when that operational tradeoff is intentional.
+
+| Variable | Value |
+|---|---|
+| `AWS_ACCOUNT_ID` | The approved 12-digit account ID |
+| `AWS_REGION` | `ap-southeast-2` unless intentionally changed |
+| `AWS_DEPLOY_ROLE_ARN` | `github_deploy_role_arn` from bootstrap |
+| `TF_STATE_BUCKET` | `state_bucket_name` from bootstrap |
+| `PORTFOLIO_OWNER` | Short owner tag such as the GitHub username |
+| `BEDROCK_MODEL_ID` | The exact cross-region inference profile ID |
+| `BEDROCK_INFERENCE_PROFILE_ARN` | The account-owned inference profile ARN |
+| `BEDROCK_FOUNDATION_MODEL_ARNS` | Comma-separated destination foundation-model ARNs |
+
+`PORTFOLIO_EXPIRES_AT` is optional; the workflow uses the next UTC day when it
+is empty. These values are identifiers and configuration, not long-lived AWS
+credentials. The API key and RDS password are generated in Secrets Manager.
+
+Run **Portfolio demo** manually with the exact confirmation `deploy portfolio`.
+Its cleanup job assumes the OIDC role independently and runs even when deploy or
+E2E verification fails. **Portfolio emergency destroy** requires the exact
+confirmation `destroy portfolio`; its daily schedule also reconciles only the
+dedicated `portfolio` state and then asserts that tagged runtime resources are
+gone.

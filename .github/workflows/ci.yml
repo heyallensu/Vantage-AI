@@ -24,7 +24,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Parse workflow YAML
-        run: ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/ci.yml")'
+        run: ruby -e 'require "yaml"; Dir[".github/workflows/*.yml"].sort.each { |path| YAML.parse_file(path) }'
 
       - name: Enforce credential-free CI boundary
         run: |
@@ -52,6 +52,61 @@ jobs:
           violations = [name for name, marker in forbidden.items() if marker in workflow]
           if violations:
               raise SystemExit("Forbidden CI capabilities: " + ", ".join(violations))
+          PY
+
+      - name: Enforce manual AWS workflow boundaries
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          demo = Path(".github/workflows/portfolio-demo.yml").read_text()
+          destroy = Path(".github/workflows/portfolio-destroy.yml").read_text()
+          violations = []
+          oidc_marker = "id-token:" + " write"
+          credential_action = "aws-actions/configure-aws-" + "credentials@"
+          access_key_input = "aws-access-key-" + "id"
+          secret_key_input = "aws-secret-access-" + "key"
+          secret_context = "secrets" + "."
+
+          required_demo = {
+              "manual trigger": "workflow_dispatch:",
+              "portfolio environment": "environment: portfolio",
+              "OIDC permission": oidc_marker,
+              "shared concurrency": "group: vantage-ai-portfolio",
+              "failure cleanup": "if: $" + "{{ always()",
+              "reverse destroy": "make tf-destroy",
+              "cleanup assertion": "scripts/aws/assert-clean.sh",
+          }
+          for name, marker in required_demo.items():
+              if marker not in demo:
+                  violations.append(f"demo missing {name}")
+          if "  push:" in demo or "  pull_request:" in demo or "  schedule:" in demo:
+              violations.append("demo must be manual-only")
+          if demo.count(credential_action) < 2:
+              violations.append("demo cleanup must authenticate independently")
+
+          required_destroy = {
+              "manual trigger": "workflow_dispatch:",
+              "daily schedule": "schedule:",
+              "portfolio environment": "environment: portfolio",
+              "OIDC permission": oidc_marker,
+              "shared concurrency": "group: vantage-ai-portfolio",
+              "confirmation": "destroy portfolio",
+              "reverse destroy": "make tf-destroy",
+              "cleanup assertion": "scripts/aws/assert-clean.sh",
+          }
+          for name, marker in required_destroy.items():
+              if marker not in destroy:
+                  violations.append(f"destroy missing {name}")
+
+          for workflow_name, workflow in (("demo", demo), ("destroy", destroy)):
+              if access_key_input in workflow or secret_key_input in workflow:
+                  violations.append(f"{workflow_name} contains long-lived AWS key inputs")
+              if secret_context in workflow:
+                  violations.append(f"{workflow_name} reads repository secrets")
+
+          if violations:
+              raise SystemExit("Unsafe AWS workflow policy: " + ", ".join(violations))
           PY
 
   python:
