@@ -28,7 +28,10 @@ resource "aws_db_instance" "this" {
   multi_az               = false
 
   backup_retention_period = var.backup_retention_period
-  skip_final_snapshot     = var.skip_final_snapshot
+  # ADR 001 deliberately allows deletion without a final snapshot: this
+  # portfolio database contains disposable sample data and cleanup must finish.
+  deletion_protection = false
+  skip_final_snapshot = var.skip_final_snapshot
 
   apply_immediately          = true
   auto_minor_version_upgrade = true

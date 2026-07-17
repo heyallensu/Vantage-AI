@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from scripts.deploy import provenance as deployment_provenance
 from scripts.deploy import workflow as deployment_workflow
 from scripts.deploy.ensure_image import (
     CommandRunner,
@@ -16,6 +17,7 @@ from scripts.deploy.ensure_image import (
     ImagePublicationError,
     ensure_image,
 )
+from scripts.deploy.package_lambda import write_deterministic_zip
 from scripts.deploy.plan_manifest import PlanIntegrityError, verify_manifest, write_manifest
 from scripts.deploy.provenance import (
     ProvenanceError,
@@ -138,6 +140,39 @@ def test_random_hex_tag_is_rejected_for_real_commit() -> None:
         verify_provenance(repo, "HEAD", random_tag)
 
 
+def test_moving_ref_is_resolved_once_before_provenance_verification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first_sha = "a" * 40
+    calls: list[str] = []
+
+    def moving_resolve(repo: Path, ref: str) -> str:
+        del repo
+        calls.append(ref)
+        if ref == first_sha:
+            return first_sha
+        return first_sha if calls.count("moving") == 1 else "b" * 40
+
+    monkeypatch.setattr(deployment_provenance, "resolve_commit", moving_resolve)
+    monkeypatch.setattr(
+        deployment_provenance,
+        "canonical_image_tag",
+        lambda repo, sha: sha[:12],
+    )
+
+    result = deployment_provenance.provenance_from_environment(
+        Path.cwd(),
+        {
+            "DEPLOY_COMMIT": "moving",
+            "IMAGE_TAG": first_sha[:12],
+            "AWS_REGION": "ap-southeast-2",
+        },
+    )
+
+    assert result.commit_sha == first_sha
+    assert calls == ["moving", first_sha]
+
+
 def test_git_archive_excludes_uncommitted_worktree_modification(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -256,6 +291,35 @@ def test_plan_hash_tampering_fails_before_apply(tmp_path: Path) -> None:
 
     with pytest.raises(PlanIntegrityError, match="SHA-256"):
         verify_manifest(plan, manifest)
+
+
+def test_non_object_plan_manifest_is_rejected(tmp_path: Path) -> None:
+    plan = tmp_path / "layer.tfplan"
+    manifest = tmp_path / "layer.manifest.json"
+    plan.write_bytes(b"reviewed-plan")
+    manifest.write_text("[]\n")
+
+    with pytest.raises(PlanIntegrityError, match="JSON object"):
+        verify_manifest(plan, manifest)
+
+
+def test_deterministic_lambda_zip_ignores_file_timestamps(tmp_path: Path) -> None:
+    source = tmp_path / "package"
+    source.mkdir()
+    (source / "handler.py").write_text("def handler(event, context): return event\n")
+    package = source / "dependency"
+    package.mkdir()
+    dependency = package / "value.py"
+    dependency.write_text("VALUE = 1\n")
+    first = tmp_path / "first.zip"
+    second = tmp_path / "second.zip"
+
+    write_deterministic_zip(source, first)
+    os.utime(source / "handler.py", (1_800_000_000, 1_800_000_000))
+    os.utime(dependency, (1_900_000_000, 1_900_000_000))
+    write_deterministic_zip(source, second)
+
+    assert first.read_bytes() == second.read_bytes()
 
 
 def test_apply_rejects_tampered_plan_before_terraform(
@@ -389,7 +453,7 @@ def test_destroy_skips_empty_partial_layers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     context = deployment_workflow.DeploymentContext(ACCOUNT_ID, "portfolio")
-    destroyed_layers = []
+    destroy_calls: list[tuple[str, list[str]]] = []
 
     def fake_terraform(
         layer: str,
@@ -403,7 +467,7 @@ def test_destroy_skips_empty_partial_layers(
         if arguments == ["state", "list"]:
             return _completed(stdout="aws_vpc.this\n" if layer == "l0" else "")
         assert arguments[0] == "destroy"
-        destroyed_layers.append(layer)
+        destroy_calls.append((layer, arguments))
         return _completed()
 
     monkeypatch.setattr(deployment_workflow, "deployment_preflight", lambda: context)
@@ -411,7 +475,8 @@ def test_destroy_skips_empty_partial_layers(
 
     deployment_workflow.destroy()
 
-    assert destroyed_layers == ["l0"]
+    assert [layer for layer, _ in destroy_calls] == ["l0"]
+    assert all("-auto-approve" in arguments for _, arguments in destroy_calls)
 
 
 def test_destroy_continues_lower_layers_after_upper_failure(
@@ -528,6 +593,30 @@ def test_ci_lambda_package_skips_cloud_preflight(
     assert packaged == [
         (deployment_workflow.REPO_ROOT, provenance.commit_sha, package_path)
     ]
+
+
+@pytest.mark.parametrize(
+    ("repository_url", "message"),
+    [
+        (
+            "123456789012.dkr.ecr.us-east-1.amazonaws.com/vantage-ai-portfolio-api",
+            "region differs",
+        ),
+        (
+            "999999999999.dkr.ecr.ap-southeast-2.amazonaws.com/vantage-ai-portfolio-api",
+            "account differs",
+        ),
+    ],
+)
+def test_ecr_repository_must_match_approved_account_and_region(
+    repository_url: str,
+    message: str,
+) -> None:
+    metadata = {"aws_region": "ap-southeast-2"}
+    context = deployment_workflow.DeploymentContext(ACCOUNT_ID, "portfolio")
+
+    with pytest.raises(deployment_workflow.WorkflowError, match=message):
+        deployment_workflow._validate_ecr_repository(repository_url, metadata, context)
 
 
 @pytest.mark.parametrize("variable", ["DEPLOY_COMMIT", "IMAGE_TAG", "AWS_REGION"])

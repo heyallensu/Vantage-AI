@@ -74,8 +74,8 @@ def provenance_from_environment(
     full_sha = resolve_commit(repo, deploy_commit)
     expected_tag = canonical_image_tag(repo, full_sha)
     image_tag = values.get("IMAGE_TAG", "") or expected_tag
-    verify_provenance(repo, deploy_commit, image_tag)
-    return DeploymentProvenance(full_sha, image_tag, aws_region)
+    verified_sha = verify_provenance(repo, full_sha, image_tag)
+    return DeploymentProvenance(verified_sha, image_tag, aws_region)
 
 
 def main() -> int:

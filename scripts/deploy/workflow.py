@@ -25,6 +25,11 @@ PROVENANCE_PATH = PLAN_DIR / "deployment-provenance.json"
 ACCOUNT_FILE = REPO_ROOT / ".aws-account-id"
 LAMBDA_PACKAGE = REPO_ROOT / "lambda" / "processor" / "package.zip"
 ACCOUNT_PATTERN = re.compile(r"^[0-9]{12}$")
+ECR_REPOSITORY_PATTERN = re.compile(
+    r"^(?P<account>[0-9]{12})\.dkr\.ecr\."
+    r"(?P<region>[a-z]{2}(?:-gov)?-[a-z]+-[0-9]+)\."
+    r"amazonaws\.com(?:\.cn)?/[a-z0-9._/-]+$"
+)
 DESTROY_IMAGE_TAG = "000000000000"
 DESTROY_IMAGE_DIGEST = f"sha256:{'0' * 64}"
 
@@ -312,6 +317,20 @@ def _image_config(metadata: dict[str, str], repository_url: str) -> ImageConfig:
     )
 
 
+def _validate_ecr_repository(
+    repository_url: str,
+    metadata: dict[str, str],
+    context: DeploymentContext,
+) -> None:
+    match = ECR_REPOSITORY_PATTERN.fullmatch(repository_url)
+    if not match:
+        raise WorkflowError("Terraform returned a non-canonical ECR repository URL")
+    if match.group("account") != context.account_id:
+        raise WorkflowError("ECR repository account differs from the approved account")
+    if match.group("region") != metadata["aws_region"]:
+        raise WorkflowError("ECR repository region differs from deployment provenance")
+
+
 def ensure_deployment_image(
     context: DeploymentContext | None = None,
 ) -> dict[str, str]:
@@ -323,6 +342,7 @@ def ensure_deployment_image(
         context=context,
         capture=True,
     ).stdout.strip()
+    _validate_ecr_repository(repository_url, metadata, context)
     recorded_repository = metadata.get("repository_url")
     if recorded_repository is not None and recorded_repository != repository_url:
         raise WorkflowError("ECR repository differs from trusted local metadata")
@@ -425,12 +445,23 @@ def destroy() -> None:
         "l2": [
             "destroy",
             "-input=false",
+            "-auto-approve",
             f"-var-file={LAYERS['l2']['tfvars']}",
             f"-var=app_image_tag={DESTROY_IMAGE_TAG}",
             f"-var=app_image_digest={DESTROY_IMAGE_DIGEST}",
         ],
-        "l1": ["destroy", "-input=false", f"-var-file={LAYERS['l1']['tfvars']}"],
-        "l0": ["destroy", "-input=false", f"-var-file={LAYERS['l0']['tfvars']}"],
+        "l1": [
+            "destroy",
+            "-input=false",
+            "-auto-approve",
+            f"-var-file={LAYERS['l1']['tfvars']}",
+        ],
+        "l0": [
+            "destroy",
+            "-input=false",
+            "-auto-approve",
+            f"-var-file={LAYERS['l0']['tfvars']}",
+        ],
     }
     failed_layers = []
     for layer in ("l2", "l1", "l0"):

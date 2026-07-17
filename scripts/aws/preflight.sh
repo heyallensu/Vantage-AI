@@ -136,9 +136,9 @@ write_backend "l2-application/vantage-ai" "${ENV_DIR}/l2-application-vantage-ai.
   printf 'state_bucket               = "%s"\n' "$TF_STATE_BUCKET"
   printf 'state_region               = "%s"\n' "$AWS_REGION"
   printf 'state_workspace_key_prefix = "vantage-ai"\n\n'
-  printf 'queue_visibility_timeout_seconds = 120\n'
+  printf 'queue_visibility_timeout_seconds = 360\n'
   printf 'queue_message_retention_seconds  = 345600\n'
-  printf 'queue_max_receive_count          = 3\n\n'
+  printf 'queue_max_receive_count          = 5\n\n'
   printf 'db_name                    = "vantage"\n'
   printf 'db_username                = "vantage"\n'
   printf 'db_instance_class          = "db.t4g.micro"\n'

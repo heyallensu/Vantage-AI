@@ -53,7 +53,7 @@ variable "state_workspace_key_prefix" {
 
 variable "queue_visibility_timeout_seconds" {
   type    = number
-  default = 120
+  default = 360
 }
 
 variable "queue_message_retention_seconds" {
@@ -63,7 +63,7 @@ variable "queue_message_retention_seconds" {
 
 variable "queue_max_receive_count" {
   type    = number
-  default = 3
+  default = 5
 }
 
 variable "db_name" {
@@ -92,8 +92,9 @@ variable "db_backup_retention_period" {
 }
 
 variable "db_skip_final_snapshot" {
-  type    = bool
-  default = true
+  description = "Portfolio-only teardown switch. True is intentional because the demo contains disposable sample data and must auto-destroy."
+  type        = bool
+  default     = true
 }
 
 variable "lambda_runtime" {

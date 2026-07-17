@@ -73,6 +73,7 @@ module "storage" {
 
   name_prefix             = local.name_prefix
   account_id              = data.aws_caller_identity.current.account_id
+  aws_region              = var.aws_region
   frontend_index_html     = var.frontend_index_html
   document_retention_days = var.document_retention_days
 }
@@ -136,7 +137,14 @@ module "lambda_processor" {
   database_secret_arn       = module.rds.database_secret_arn
   database_name             = module.rds.db_name
 
-  depends_on = [module.iam]
+  depends_on = [module.iam, module.vpc_endpoints]
+}
+
+check "queue_visibility_covers_lambda_retries" {
+  assert {
+    condition     = var.queue_visibility_timeout_seconds >= var.lambda_timeout_seconds * 6
+    error_message = "queue_visibility_timeout_seconds must be at least six times lambda_timeout_seconds."
+  }
 }
 
 module "ecs_service" {

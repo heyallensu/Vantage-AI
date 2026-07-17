@@ -1,7 +1,7 @@
 locals {
   buckets = {
-    documents = "${var.name_prefix}-${var.account_id}-documents"
-    frontend  = "${var.name_prefix}-${var.account_id}-frontend"
+    documents = "${var.name_prefix}-${var.aws_region}-${var.account_id}-documents"
+    frontend  = "${var.name_prefix}-${var.aws_region}-${var.account_id}-frontend"
   }
 }
 
@@ -59,7 +59,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
     filter {}
 
     abort_incomplete_multipart_upload { days_after_initiation = 1 }
-    noncurrent_version_expiration { noncurrent_days = 7 }
+    noncurrent_version_expiration { noncurrent_days = 1 }
 
     dynamic "expiration" {
       for_each = each.key == "documents" ? [1] : []

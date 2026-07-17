@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import zipfile
 from pathlib import Path
 
 from scripts.deploy.provenance import verify_provenance
@@ -15,6 +16,7 @@ SAM_BUILD_IMAGE = (
     "public.ecr.aws/sam/build-python3.12@"
     "sha256:a62d05eb8829ca1ef9d428337e4989e3074d25e41864bdc58085da5b34d18ef5"
 )
+DETERMINISTIC_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
 
 def extract_lambda_source(repo: Path, full_sha: str, destination: Path) -> Path:
@@ -37,6 +39,26 @@ def extract_lambda_source(repo: Path, full_sha: str, destination: Path) -> Path:
     return destination / "lambda" / "processor"
 
 
+def write_deterministic_zip(source: Path, output: Path) -> None:
+    """Write a stable ZIP independent of timestamps and traversal order."""
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(
+        output,
+        mode="w",
+        compression=zipfile.ZIP_DEFLATED,
+        compresslevel=9,
+    ) as archive:
+        for path in sorted(item for item in source.rglob("*") if item.is_file()):
+            info = zipfile.ZipInfo(
+                path.relative_to(source).as_posix(),
+                DETERMINISTIC_ZIP_TIMESTAMP,
+            )
+            info.create_system = 3
+            info.external_attr = (path.stat().st_mode & 0xFFFF) << 16
+            info.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(info, path.read_bytes(), compresslevel=9)
+
+
 def package_lambda(repo: Path, full_sha: str, output: Path) -> None:
     """Install and zip Lambda dependencies in an AWS-compatible build image."""
     with tempfile.TemporaryDirectory(prefix="vantage-ai-lambda-") as temp:
@@ -57,13 +79,15 @@ def package_lambda(repo: Path, full_sha: str, output: Path) -> None:
                 SAM_BUILD_IMAGE,
                 "/bin/sh",
                 "-c",
-                "pip install -r requirements.txt -t package && "
-                "cp handler.py package/ && cd package && zip -qr ../package.zip .",
+                "pip install --no-compile -r requirements.txt -t package && "
+                "cp handler.py package/",
             ],
             check=True,
         )
+        temporary_zip = Path(temp) / "package.zip"
+        write_deterministic_zip(source / "package", temporary_zip)
         output.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source / "package.zip", output)
+        shutil.copyfile(temporary_zip, output)
 
 
 def main() -> int:

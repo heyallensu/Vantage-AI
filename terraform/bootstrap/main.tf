@@ -196,8 +196,10 @@ data "aws_iam_policy_document" "github_deploy" {
     sid    = "PublishApplicationImages"
     effect = "Allow"
     actions = [
+      "ecr:BatchGetImage",
       "ecr:BatchCheckLayerAvailability",
       "ecr:CompleteLayerUpload",
+      "ecr:DescribeImages",
       "ecr:GetDownloadUrlForLayer",
       "ecr:InitiateLayerUpload",
       "ecr:PutImage",

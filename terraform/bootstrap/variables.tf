@@ -7,6 +7,7 @@ variable "aws_region" {
 variable "allowed_account_id" {
   description = "The only AWS account in which the bootstrap stack may operate."
   type        = string
+  sensitive   = true
 
   validation {
     condition     = can(regex("^[0-9]{12}$", var.allowed_account_id))
@@ -39,8 +40,8 @@ variable "state_bucket_unique_suffix" {
   type        = string
 
   validation {
-    condition     = can(regex("^[a-z0-9][a-z0-9-]{2,24}$", var.state_bucket_unique_suffix))
-    error_message = "state_bucket_unique_suffix must be 3-25 lowercase letters, digits, or hyphens."
+    condition     = can(regex("^[a-z0-9](?:[a-z0-9-]{1,23}[a-z0-9])$", var.state_bucket_unique_suffix))
+    error_message = "state_bucket_unique_suffix must be 3-25 lowercase letters, digits, or internal hyphens, and must end with a letter or digit."
   }
 }
 

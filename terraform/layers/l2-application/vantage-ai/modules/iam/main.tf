@@ -153,6 +153,7 @@ data "aws_iam_policy_document" "lambda_runtime" {
       "ec2:CreateNetworkInterface",
       "ec2:DeleteNetworkInterface",
       "ec2:DescribeNetworkInterfaces",
+      "ec2:DescribeSubnets",
       "ec2:UnassignPrivateIpAddresses",
     ]
     resources = ["*"]

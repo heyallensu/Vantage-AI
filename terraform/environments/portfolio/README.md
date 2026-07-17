@@ -61,3 +61,7 @@ E2E verification fails. **Portfolio emergency destroy** requires the exact
 confirmation `destroy portfolio`; its daily schedule also reconciles only the
 dedicated `portfolio` state and then asserts that tagged runtime resources are
 gone.
+It must start from isolated `portfolio` workspaces. Do not import the project
+external `dev` state or previously named security groups/log groups into this
+environment; state-migration blocks for those unrelated resources are
+intentionally excluded.

@@ -8,9 +8,9 @@ state_bucket               = "<bootstrap-state-bucket-output>"
 state_region               = "ap-southeast-2"
 state_workspace_key_prefix = "vantage-ai"
 
-queue_visibility_timeout_seconds = 120
+queue_visibility_timeout_seconds = 360
 queue_message_retention_seconds = 345600
-queue_max_receive_count = 3
+queue_max_receive_count = 5
 
 db_name = "vantage"
 db_username = "vantage"

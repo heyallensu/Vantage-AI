@@ -37,6 +37,8 @@ def verify_manifest(plan_path: Path, manifest_path: Path) -> dict[str, str]:
         manifest = json.loads(manifest_path.read_text())
     except (json.JSONDecodeError, OSError) as exc:
         raise PlanIntegrityError("Saved-plan manifest is invalid") from exc
+    if not isinstance(manifest, dict):
+        raise PlanIntegrityError("Saved-plan manifest must be a JSON object")
     expected = manifest.get("plan_sha256")
     actual = sha256_file(plan_path)
     if not isinstance(expected, str) or expected != actual:
