@@ -2,6 +2,7 @@
 
 import argparse
 import io
+import os
 import shutil
 import subprocess
 import tarfile
@@ -47,6 +48,10 @@ def package_lambda(repo: Path, full_sha: str, output: Path) -> None:
                 "--rm",
                 "--platform",
                 "linux/amd64",
+                "--user",
+                f"{os.getuid()}:{os.getgid()}",
+                "--env",
+                "HOME=/tmp",
                 "-v",
                 f"{source}:/var/task",
                 SAM_BUILD_IMAGE,
