@@ -98,6 +98,7 @@ module "rds" {
   db_instance_class          = var.db_instance_class
   db_allocated_storage       = var.db_allocated_storage
   backup_retention_period    = var.db_backup_retention_period
+  deletion_protection        = var.db_deletion_protection
   skip_final_snapshot        = var.db_skip_final_snapshot
 }
 

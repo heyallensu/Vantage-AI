@@ -78,6 +78,8 @@ def test_migrations_adopt_legacy_schema_without_losing_records(
         connection.execute(sa.text("DROP TABLE alembic_version"))
     engine.dispose()
 
+    # This hostile process value is deliberately visible to alembic/env.py.
+    # Config.attributes must keep the explicit migration target authoritative.
     monkeypatch.setenv(
         "DATABASE_URL",
         "postgresql://wrong:wrong@127.0.0.1:1/wrong",

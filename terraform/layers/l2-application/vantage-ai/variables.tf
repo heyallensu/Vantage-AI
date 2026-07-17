@@ -91,6 +91,12 @@ variable "db_backup_retention_period" {
   default = 1
 }
 
+variable "db_deletion_protection" {
+  description = "Enable for durable environments that require an explicit protection change before RDS deletion."
+  type        = bool
+  default     = false
+}
+
 variable "db_skip_final_snapshot" {
   description = "Portfolio-only teardown switch. True is intentional because the demo contains disposable sample data and must auto-destroy."
   type        = bool

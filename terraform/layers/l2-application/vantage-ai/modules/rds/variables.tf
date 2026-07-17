@@ -28,6 +28,10 @@ variable "backup_retention_period" {
   type = number
 }
 
+variable "deletion_protection" {
+  type = bool
+}
+
 variable "skip_final_snapshot" {
   type = bool
 }

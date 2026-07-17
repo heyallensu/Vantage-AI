@@ -28,9 +28,9 @@ resource "aws_db_instance" "this" {
   multi_az               = false
 
   backup_retention_period = var.backup_retention_period
-  # ADR 001 deliberately allows deletion without a final snapshot: this
-  # portfolio database contains disposable sample data and cleanup must finish.
-  deletion_protection = false
+  # ADR 001 keeps both controls disabled for the disposable portfolio data, but
+  # callers can opt into deletion protection and final snapshots independently.
+  deletion_protection = var.deletion_protection
   skip_final_snapshot = var.skip_final_snapshot
 
   apply_immediately          = true

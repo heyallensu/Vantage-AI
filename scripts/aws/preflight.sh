@@ -144,6 +144,7 @@ write_backend "l2-application/vantage-ai" "${ENV_DIR}/l2-application-vantage-ai.
   printf 'db_instance_class          = "db.t4g.micro"\n'
   printf 'db_allocated_storage       = 20\n'
   printf 'db_backup_retention_period = 1\n'
+  printf 'db_deletion_protection     = false\n'
   printf 'db_skip_final_snapshot     = true\n\n'
   printf 'lambda_runtime      = "python3.12"\n'
   printf 'lambda_handler      = "handler.handler"\n'
