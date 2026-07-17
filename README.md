@@ -260,11 +260,23 @@ curl -H "X-API-Key: $API_KEY" \
 
 ## CI/CD
 
-Automatic deployment is intentionally disabled while the repository is being
-separated from the former project environment. Pull-request quality gates and
-the later manual portfolio demo workflow must not contain fixed AWS resource
-names; they resolve deployment coordinates from the `portfolio` Terraform
-outputs.
+Pull requests and pushes to `main` or `feature/**` run credential-free quality gates for Python
+(including the full Alembic history on PostgreSQL 16), the AWS-compatible Lambda
+ZIP, backend-free Terraform validation, Trivy IaC checks, and a locally built
+container image with Trivy vulnerability and misconfiguration scanning. CI never
+assumes an AWS role, reads repository secrets, pushes an image, or deploys.
+
+The Lambda and container artifacts are built from the checked-out Git commit.
+The Lambda ZIP is passed to Terraform validation at the same path used by the L2
+module, while the container is scanned locally and is never published. Major
+GitHub-maintained actions use stable major tags; pin every remaining action to a
+reviewed commit SHA before a final production release. Trivy is already SHA-pinned
+because it executes third-party security tooling.
+
+Automatic deployment remains intentionally disabled. A later manual portfolio
+demo workflow must resolve deployment coordinates from `portfolio` Terraform
+outputs and retain the repository's account, workspace, saved-plan, and source
+provenance preflight.
 
 ## Destroy Everything
 

@@ -347,6 +347,13 @@ def package_deployment_lambda(
     return metadata
 
 
+def package_ci_lambda() -> DeploymentProvenance:
+    """Package the checked-out commit without cloud deployment preflight."""
+    provenance = validate_inputs()
+    package_lambda(REPO_ROOT, provenance.commit_sha, LAMBDA_PACKAGE)
+    return provenance
+
+
 def build_local_image() -> None:
     context = deployment_preflight()
     metadata = load_provenance(context=context)
@@ -446,6 +453,7 @@ def main() -> int:
             "build-image",
             "ensure-image",
             "package-lambda",
+            "package-lambda-ci",
             "plan-l0",
             "apply-l0",
             "plan-l1",
@@ -461,6 +469,7 @@ def main() -> int:
         "build-image": build_local_image,
         "ensure-image": ensure_deployment_image,
         "package-lambda": package_deployment_lambda,
+        "package-lambda-ci": package_ci_lambda,
         "plan-l0": lambda: plan_layer("l0"),
         "apply-l0": lambda: apply_layer("l0"),
         "plan-l1": lambda: plan_layer("l1"),

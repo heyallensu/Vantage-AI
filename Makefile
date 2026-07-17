@@ -34,7 +34,7 @@ ifneq ($(ENV),$(SUPPORTED_ENV))
 $(error Unsupported ENV '$(ENV)'; only '$(SUPPORTED_ENV)' is allowed)
 endif
 
-.PHONY: dev down logs db-migrate db-current lint test audit check lambda-package build ensure-image push deploy demo-info destroy validate-deployment-inputs \
+.PHONY: dev down logs db-migrate db-current lint test audit check lambda-package lambda-package-ci build ensure-image push deploy demo-info destroy validate-deployment-inputs \
 	bootstrap tf-fmt tf-init tf-workspace tf-check tf-plan tf-apply tf-destroy tf-plan-l0 tf-apply-l0 \
 	tf-plan-l1 tf-apply-l1 tf-plan-l2 tf-apply-l2 require-plan-dir \
 	require-account verify-aws-context require-portfolio-workspaces \
@@ -69,6 +69,10 @@ check: lint test audit
 
 lambda-package: require-source-provenance
 	.venv/bin/python -m scripts.deploy.workflow package-lambda
+
+# CI packages the checked-out commit without deployment account/workspace preflight.
+lambda-package-ci:
+	$(PYTHON) -m scripts.deploy.workflow package-lambda-ci
 
 require-account:
 	@test -s $(ACCOUNT_FILE) || { echo "Missing $(ACCOUNT_FILE); add the permitted 12-digit AWS account ID locally." >&2; exit 1; }

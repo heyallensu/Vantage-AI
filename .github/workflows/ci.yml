@@ -1,0 +1,224 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "feature/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workflow-policy:
+    name: Workflow policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Parse workflow YAML
+        run: ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/ci.yml")'
+
+      - name: Enforce credential-free CI boundary
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow = Path(".github/workflows/ci.yml").read_text()
+          forbidden = {
+              "AWS credential action": "configure-aws-" + "credentials",
+              "AWS login action": "amazon-" + "ecr-login",
+              "OIDC write permission": "id-token:" + " write",
+              "repository secret": "secrets" + ".",
+              "assumed role input": "role-to-" + "assume",
+              "access key input": "aws-access-key-" + "id",
+              "AWS identity call": "aws " + "sts",
+              "AWS registry command": "aws " + "ecr",
+              "AWS service command": "aws " + "ecs",
+              "Terraform planning": "terraform " + "plan",
+              "Terraform deployment": "terraform " + "apply",
+              "Terraform destruction": "terraform " + "destroy",
+              "container publication": "docker " + "push",
+              "Make deployment target": "make " + "deploy",
+              "Make publication target": "make " + "push",
+          }
+          violations = [name for name, marker in forbidden.items() if marker in workflow]
+          if violations:
+              raise SystemExit("Forbidden CI capabilities: " + ", ".join(violations))
+          PY
+
+  python:
+    name: Python 3.12
+    needs: workflow-policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: vantage
+          POSTGRES_PASSWORD: vantage
+          POSTGRES_DB: vantage
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vantage -d vantage"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      MIGRATION_TEST_ADMIN_URL: postgresql://vantage:vantage@localhost:5432/postgres
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            app/requirements.txt
+            lambda/processor/requirements.txt
+
+      - name: Install development dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
+
+      - name: Run quality gates
+        run: make check PYTHON=python
+
+      - name: Compile Python sources
+        run: python -m compileall -q app alembic lambda scripts tests
+
+  lambda-package:
+    name: Lambda package
+    needs: workflow-policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build Linux AMD64 Lambda package
+        env:
+          DEPLOY_COMMIT: ${{ github.sha }}
+        run: make lambda-package-ci PYTHON=python
+
+      - name: Verify Lambda package
+        env:
+          AWS_DEFAULT_REGION: ap-southeast-2
+          AWS_EC2_METADATA_DISABLED: "true"
+        run: |
+          set -euo pipefail
+          package=lambda/processor/package.zip
+          unzip -t "$package"
+          unzip -l "$package" | grep -Eq '(^|[[:space:]])handler\.py$'
+          unzip -l "$package" | grep -Eq '(^|[[:space:]])psycopg2/'
+          package_dir="$(mktemp -d)"
+          unzip -q "$package" -d "$package_dir"
+          PYTHONPATH="$package_dir" python - <<'PY'
+          import sys
+          import types
+
+          # Lambda supplies boto3 at runtime; stub only that runtime-provided client
+          # so the clean runner still proves handler and packaged psycopg2 import.
+          boto3 = types.ModuleType("boto3")
+          boto3.client = lambda *args, **kwargs: object()
+          sys.modules["boto3"] = boto3
+
+          import handler  # noqa: F401
+          import psycopg2  # noqa: F401
+          PY
+          python -m compileall -q "$package_dir/handler.py" "$package_dir/psycopg2"
+
+      - name: Upload Lambda package
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-package
+          path: lambda/processor/package.zip
+          if-no-files-found: error
+          retention-days: 3
+
+  terraform:
+    name: Terraform and IaC
+    needs:
+      - workflow-policy
+      - lambda-package
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download Lambda package
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-package
+          path: lambda/processor
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+          terraform_wrapper: false
+
+      - name: Cache Terraform providers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/vantage-ai-terraform-plugin-cache
+          key: terraform-providers-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('terraform/**/.terraform.lock.hcl') }}
+          restore-keys: |
+            terraform-providers-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Validate Terraform without backend or AWS credentials
+        run: make tf-check
+
+      - name: Scan Terraform configuration
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: terraform
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          hide-progress: true
+
+  container:
+    name: Container image
+    needs: workflow-policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build image from checked-out commit
+        run: >-
+          docker build
+          --label org.opencontainers.image.revision=${{ github.sha }}
+          --tag vantage-ai-ci:${{ github.sha }}
+          --file app/Dockerfile
+          .
+
+      - name: Scan image vulnerabilities and misconfigurations
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: vantage-ai-ci:${{ github.sha }}
+          scanners: vuln,misconfig
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          hide-progress: true

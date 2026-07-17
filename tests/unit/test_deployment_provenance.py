@@ -439,6 +439,37 @@ def test_plan_and_apply_bind_account_and_workspace(
     assert terraform_actions == ["plan", "apply"]
 
 
+def test_ci_lambda_package_skips_cloud_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    package_path = tmp_path / "package.zip"
+    provenance = deployment_workflow.DeploymentProvenance(
+        commit_sha="a" * 40,
+        image_tag="a" * 12,
+        aws_region="ap-southeast-2",
+    )
+    packaged: list[tuple[Path, str, Path]] = []
+
+    monkeypatch.setattr(deployment_workflow, "LAMBDA_PACKAGE", package_path)
+    monkeypatch.setattr(deployment_workflow, "validate_inputs", lambda: provenance)
+    monkeypatch.setattr(
+        deployment_workflow,
+        "deployment_preflight",
+        lambda: pytest.fail("CI packaging must not run deployment preflight"),
+    )
+    monkeypatch.setattr(
+        deployment_workflow,
+        "package_lambda",
+        lambda repo, commit, output: packaged.append((repo, commit, output)),
+    )
+
+    assert deployment_workflow.package_ci_lambda() == provenance
+    assert packaged == [
+        (deployment_workflow.REPO_ROOT, provenance.commit_sha, package_path)
+    ]
+
+
 @pytest.mark.parametrize("variable", ["DEPLOY_COMMIT", "IMAGE_TAG", "AWS_REGION"])
 def test_make_environment_injection_fails_closed(
     variable: str,
