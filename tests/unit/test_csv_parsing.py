@@ -25,3 +25,27 @@ def test_parse_financial_csv_rejects_invalid_amount() -> None:
 
     with pytest.raises(ValueError, match="Invalid amount on row 2"):
         parse_financial_csv(csv_text)
+
+
+def test_parse_financial_csv_normalizes_whitespace_padded_headers() -> None:
+    csv_text = (
+        " date , description , amount , category \n"
+        "2024-01-01,Service,42,Operations\n"
+    )
+
+    assert parse_financial_csv(csv_text) == [
+        {
+            "date": "2024-01-01",
+            "description": "Service",
+            "amount": 42.0,
+            "category": "Operations",
+        }
+    ]
+
+
+@pytest.mark.parametrize("amount", ["NaN", "Infinity", "-Infinity"])
+def test_parse_financial_csv_rejects_non_finite_amount(amount: str) -> None:
+    csv_text = f"date,description,amount,category\n2024-01-01,Bad,{amount},Unknown\n"
+
+    with pytest.raises(ValueError, match="Amount must be finite on row 2"):
+        parse_financial_csv(csv_text)

@@ -4,6 +4,7 @@ import importlib
 import json
 from unittest.mock import Mock
 
+import pytest
 from pytest import MonkeyPatch
 
 handler = importlib.import_module("lambda.processor.handler")
@@ -28,6 +29,9 @@ def test_lambda_resolves_managed_database_secret(monkeypatch: MonkeyPatch) -> No
     resolved = handler.resolve_database_url(client=client)
 
     assert resolved == "postgresql://lambda-user:p%40ss%2Fword@db.internal:5432/vantage"
+    client.get_secret_value.assert_called_once_with(
+        SecretId="arn:aws:secretsmanager:region:account:secret:db"
+    )
 
 
 def test_lambda_connection_prefers_local_database_url(monkeypatch: MonkeyPatch) -> None:
@@ -39,3 +43,24 @@ def test_lambda_connection_prefers_local_database_url(monkeypatch: MonkeyPatch) 
     handler.get_connection()
 
     connect.assert_called_once_with(local_url)
+
+
+def test_lambda_csv_parser_normalizes_whitespace_padded_headers() -> None:
+    records = handler.parse_csv(
+        " date , description , amount , category \n"
+        "2024-01-01,Service,42,Operations\n",
+        "document-123",
+    )
+
+    assert records[0]["date"] == "2024-01-01"
+    assert records[0]["description"] == "Service"
+    assert records[0]["amount"] == 42.0
+    assert records[0]["category"] == "Operations"
+
+
+@pytest.mark.parametrize("amount", ["NaN", "Infinity", "-Infinity"])
+def test_lambda_csv_parser_rejects_non_finite_amount(amount: str) -> None:
+    csv_text = f"date,description,amount,category\n2024-01-01,Bad,{amount},Unknown\n"
+
+    with pytest.raises(ValueError, match="Amount must be finite on row 2"):
+        handler.parse_csv(csv_text, "document-123")

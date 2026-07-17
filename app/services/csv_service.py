@@ -2,11 +2,29 @@
 
 import csv
 import io
+import math
+
+REQUIRED_HEADERS = {"date", "description", "amount", "category"}
+
+
+def financial_csv_reader(csv_text: str) -> csv.DictReader:
+    """Return a reader whose headers match the validated canonical schema."""
+    reader = csv.DictReader(io.StringIO(csv_text))
+    normalized_headers = [
+        header.strip() if header is not None else ""
+        for header in (reader.fieldnames or [])
+    ]
+    if not normalized_headers or any(not header for header in normalized_headers):
+        raise ValueError("CSV headers must be non-empty")
+    if len(normalized_headers) != len(set(normalized_headers)):
+        raise ValueError("CSV headers must be unique after whitespace normalization")
+    reader.fieldnames = normalized_headers
+    return reader
 
 
 def parse_financial_csv(csv_text: str) -> list[dict[str, str | float]]:
     """Parse financial CSV text into normalized record dictionaries."""
-    reader = csv.DictReader(io.StringIO(csv_text))
+    reader = financial_csv_reader(csv_text)
     records: list[dict[str, str | float]] = []
 
     for row_number, row in enumerate(reader, start=2):
@@ -15,6 +33,8 @@ def parse_financial_csv(csv_text: str) -> list[dict[str, str | float]]:
             amount = float(raw_amount)
         except ValueError as exc:
             raise ValueError(f"Invalid amount on row {row_number}") from exc
+        if not math.isfinite(amount):
+            raise ValueError(f"Amount must be finite on row {row_number}")
 
         records.append(
             {

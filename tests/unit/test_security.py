@@ -1,9 +1,11 @@
 """Authentication and production configuration boundary tests."""
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.core.config import ConfigurationError, Settings
+from app.core.security import require_api_key
 from app.main import create_app
 
 
@@ -27,6 +29,13 @@ def test_health_and_readiness_do_not_require_api_key(test_app) -> None:
 
     assert health.status_code == 200
     assert readiness.status_code == 200
+
+
+def test_non_ascii_api_key_is_rejected_as_401(test_app) -> None:
+    with pytest.raises(HTTPException) as error:
+        require_api_key("密钥", test_app.state.settings)
+
+    assert error.value.status_code == 401
 
 
 def test_non_local_settings_fail_fast_when_required_values_are_missing() -> None:

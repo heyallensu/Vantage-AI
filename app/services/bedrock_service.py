@@ -9,7 +9,7 @@ from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 
 
 class BedrockServiceError(RuntimeError):
@@ -41,13 +41,17 @@ def build_bedrock_config() -> Config:
 
 
 @lru_cache
-def get_bedrock_client():
-    settings = get_settings()
+def _get_bedrock_client(settings: Settings):
     return boto3.client(
         "bedrock-runtime",
         region_name=settings.aws_region,
         config=build_bedrock_config(),
     )
+
+
+def get_bedrock_client(settings: Settings | None = None):
+    """Return a cached client bound to the caller's validated settings."""
+    return _get_bedrock_client(settings or get_settings())
 
 
 def _strip_markdown(text: str) -> str:
@@ -64,9 +68,10 @@ def ask_claude(
     max_tokens: int = 800,
     *,
     client=None,
+    settings: Settings | None = None,
 ) -> str:
     """Invoke the configured model and normalize provider failures."""
-    settings = get_settings()
+    resolved_settings = settings or get_settings()
     body = json.dumps(
         {
             "anthropic_version": "bedrock-2023-05-31",
@@ -75,8 +80,8 @@ def ask_claude(
         }
     )
     try:
-        response = (client or get_bedrock_client()).invoke_model(
-            modelId=settings.bedrock_model_id,
+        response = (client or get_bedrock_client(resolved_settings)).invoke_model(
+            modelId=resolved_settings.bedrock_model_id,
             body=body,
             contentType="application/json",
             accept="application/json",
@@ -92,7 +97,12 @@ def ask_claude(
         raise BedrockServiceError("AI provider returned an invalid response") from exc
 
 
-def analyze_records(records: list[dict], *, client=None) -> dict:
+def analyze_records(
+    records: list[dict],
+    *,
+    client=None,
+    settings: Settings | None = None,
+) -> dict:
     """Analyze financial operations and enforce the exact JSON response schema."""
     records_text = json.dumps(records[:200], separators=(",", ":"))
     prompt = f"""You are a financial operations analyst.
@@ -107,7 +117,7 @@ Review the supplied transaction records. Respond ONLY with valid JSON matching t
 Do not provide financial advice. Report only observations supported by the records.
 Records:
 {records_text}"""
-    raw = ask_claude(prompt, client=client)
+    raw = ask_claude(prompt, client=client, settings=settings)
     try:
         result = AnalysisResult.model_validate_json(_strip_markdown(raw))
     except ValidationError as exc:
@@ -115,17 +125,27 @@ Records:
     return result.model_dump()
 
 
-def generate_summary(records: list[dict], *, client=None) -> str:
+def generate_summary(
+    records: list[dict],
+    *,
+    client=None,
+    settings: Settings | None = None,
+) -> str:
     """Generate a concise descriptive summary, bounded to the first 50 records."""
     records_text = json.dumps(records[:50], separators=(",", ":"))
     prompt = f"""Summarize these financial operations in 3-4 sentences.
 Describe totals, patterns, and unusual entries. Do not provide financial advice.
 Records:
 {records_text}"""
-    return ask_claude(prompt, max_tokens=400, client=client)
+    return ask_claude(prompt, max_tokens=400, client=client, settings=settings)
 
 
-def find_anomalies(records: list[dict], *, client=None) -> list[str]:
+def find_anomalies(
+    records: list[dict],
+    *,
+    client=None,
+    settings: Settings | None = None,
+) -> list[str]:
     """Identify record-level anomalies and enforce a strict string-array result."""
     records_text = json.dumps(records[:200], separators=(",", ":"))
     prompt = f"""Act as a financial operations auditor.
@@ -133,7 +153,7 @@ Return ONLY a JSON array of strings describing anomalies supported by these reco
 Return [] when no anomaly is supported. Do not provide financial advice.
 Records:
 {records_text}"""
-    raw = ask_claude(prompt, client=client)
+    raw = ask_claude(prompt, client=client, settings=settings)
     try:
         return ANOMALY_LIST.validate_json(_strip_markdown(raw))
     except ValidationError as exc:

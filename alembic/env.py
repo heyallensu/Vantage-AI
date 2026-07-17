@@ -6,6 +6,7 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
+from app.core.database import resolve_database_url
 from app.models.record import Base
 
 config = context.config
@@ -13,9 +14,20 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-database_url = os.getenv("DATABASE_URL")
-if database_url:
-    config.set_main_option("sqlalchemy.url", database_url)
+database_url = config.attributes.get("database_url")
+if not isinstance(database_url, str) or not database_url:
+    runtime_url = os.getenv("DATABASE_URL", "")
+    secret_arn = os.getenv("DB_SECRET_ARN", "")
+    if runtime_url or secret_arn:
+        database_url = resolve_database_url(
+            database_url=runtime_url,
+            secret_arn=secret_arn,
+            database_name=os.getenv("DB_NAME", "vantage"),
+            region=os.getenv("AWS_DEFAULT_REGION"),
+        )
+    else:
+        database_url = config.get_main_option("sqlalchemy.url")
+config.set_main_option("sqlalchemy.url", database_url)
 
 target_metadata = Base.metadata
 

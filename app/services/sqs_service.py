@@ -16,15 +16,17 @@ def send_document_for_processing(
     *,
     client=None,
     queue_url: str | None = None,
+    region: str | None = None,
 ) -> str:
     """Publish one strict v1 job and return the provider message ID."""
-    settings = get_settings()
-    resolved_queue_url = queue_url or settings.sqs_queue_url
+    settings = get_settings() if queue_url is None or region is None else None
+    resolved_queue_url = queue_url or (settings.sqs_queue_url if settings else "")
+    resolved_region = region or (settings.aws_region if settings else "")
     if not resolved_queue_url:
         raise RuntimeError("SQS_QUEUE_URL is required outside local development")
     resolved_client = client or boto3.client(
         "sqs",
-        region_name=settings.aws_region,
+        region_name=resolved_region,
     )
     try:
         response = resolved_client.send_message(

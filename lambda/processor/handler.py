@@ -4,6 +4,7 @@ import csv
 import hashlib
 import io
 import json
+import math
 import os
 import uuid
 from datetime import datetime, timezone
@@ -94,7 +95,16 @@ def fetch_csv(job: dict) -> str:
 def parse_csv(raw_csv: str, document_id: str) -> list[dict]:
     """Validate and parse the expected financial operations CSV schema."""
     reader = csv.DictReader(io.StringIO(raw_csv))
-    headers = {header.strip() for header in (reader.fieldnames or []) if header}
+    normalized_headers = [
+        header.strip() if header is not None else ""
+        for header in (reader.fieldnames or [])
+    ]
+    if not normalized_headers or any(not header for header in normalized_headers):
+        raise ValueError("CSV headers must be non-empty")
+    if len(normalized_headers) != len(set(normalized_headers)):
+        raise ValueError("CSV headers must be unique after whitespace normalization")
+    reader.fieldnames = normalized_headers
+    headers = set(normalized_headers)
     missing_headers = sorted(REQUIRED_HEADERS - headers)
     if missing_headers:
         raise ValueError(f"Missing required CSV headers: {', '.join(missing_headers)}")
@@ -105,6 +115,8 @@ def parse_csv(raw_csv: str, document_id: str) -> list[dict]:
             amount = float(row.get("amount", 0) or 0)
         except ValueError as exc:
             raise ValueError(f"Invalid amount on row {row_number}") from exc
+        if not math.isfinite(amount):
+            raise ValueError(f"Amount must be finite on row {row_number}")
         records.append(
             {
                 "id": str(uuid.uuid4()),

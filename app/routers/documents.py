@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.contracts.document_job import DocumentJob
 from app.core.config import Settings, get_settings
@@ -68,14 +69,16 @@ async def upload_document(
     db.commit()
 
     try:
-        stored = storage.store(document_id, content)
+        stored = await run_in_threadpool(storage.store, document_id, content)
         document.object_key = stored.object_key
         document.checksum_sha256 = stored.checksum_sha256
         db.commit()
 
         if not settings.is_local:
-            send_document_for_processing(
+            await run_in_threadpool(
+                send_document_for_processing,
                 DocumentJob(
+                    schema_version=1,
                     document_id=document_id,
                     bucket=storage.bucket_name,
                     object_key=stored.object_key,
@@ -83,6 +86,7 @@ async def upload_document(
                     trace_id=trace_id,
                 ),
                 queue_url=settings.sqs_queue_url,
+                region=settings.aws_region,
             )
         else:
             _process_locally(document_id, db, storage)

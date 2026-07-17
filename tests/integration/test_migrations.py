@@ -1,6 +1,7 @@
 """PostgreSQL migration tests for the complete Alembic history."""
 
 import sqlalchemy as sa
+from pytest import MonkeyPatch
 from sqlalchemy import create_engine, inspect
 
 from alembic import command
@@ -54,6 +55,7 @@ def test_migrations_upgrade_downgrade_and_restore_schema(
 
 def test_migrations_adopt_legacy_schema_without_losing_records(
     migration_database_url: str,
+    monkeypatch: MonkeyPatch,
 ) -> None:
     config = Config("alembic.ini")
     config.set_main_option("sqlalchemy.url", migration_database_url)
@@ -76,6 +78,10 @@ def test_migrations_adopt_legacy_schema_without_losing_records(
         connection.execute(sa.text("DROP TABLE alembic_version"))
     engine.dispose()
 
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql://wrong:wrong@127.0.0.1:1/wrong",
+    )
     upgrade_database(database_url=migration_database_url)
 
     migrated_engine = create_engine(migration_database_url)
@@ -93,4 +99,8 @@ def test_migrations_adopt_legacy_schema_without_losing_records(
         "documents",
         "records",
     }
+    document_columns = {
+        column["name"] for column in inspect(migrated_engine).get_columns("documents")
+    }
+    assert "raw_csv" not in document_columns
     migrated_engine.dispose()

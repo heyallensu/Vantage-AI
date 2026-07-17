@@ -78,3 +78,20 @@ def test_request_middleware_returns_request_id_and_logs_route(test_app) -> None:
     assert response.headers["X-Request-ID"] == "portfolio-request"
     assert access_record.route == "/health"
     assert access_record.status == 200
+
+
+def test_unhandled_error_response_keeps_request_id(test_app) -> None:
+    @test_app.get("/test-unhandled-error")
+    def fail_request() -> None:
+        raise RuntimeError("provider detail must not escape")
+
+    with TestClient(test_app, raise_server_exceptions=False) as request_client:
+        response = request_client.get(
+            "/test-unhandled-error",
+            headers={"X-Request-ID": "failed-request"},
+        )
+
+    assert response.status_code == 500
+    assert response.headers["X-Request-ID"] == "failed-request"
+    assert response.json() == {"detail": "Internal server error"}
+    assert "provider detail" not in response.text

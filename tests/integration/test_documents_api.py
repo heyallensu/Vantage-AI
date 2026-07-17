@@ -80,12 +80,19 @@ def test_insight_endpoints_use_processed_records(
     document_id = upload_sample(client)
     monkeypatch.setattr(
         "app.routers.insights.analyze_records",
-        lambda records: {"record_count": len(records), "summary": "ok", "anomalies": []},
+        lambda records, **kwargs: {
+            "record_count": len(records),
+            "summary": "ok",
+            "anomalies": [],
+        },
     )
-    monkeypatch.setattr("app.routers.insights.generate_summary", lambda records: "summary")
+    monkeypatch.setattr(
+        "app.routers.insights.generate_summary",
+        lambda records, **kwargs: "summary",
+    )
     monkeypatch.setattr(
         "app.routers.insights.find_anomalies",
-        lambda records: ["Unexpected Transfer"],
+        lambda records, **kwargs: ["Unexpected Transfer"],
     )
 
     analyze_response = client.post("/insights/analyze", params={"document_id": document_id})
@@ -110,8 +117,8 @@ def test_insights_convert_model_failures_to_stable_502(
 ) -> None:
     document_id = upload_sample(client)
 
-    def fail_analysis(records):
-        del records
+    def fail_analysis(records, **kwargs):
+        del records, kwargs
         raise BedrockServiceError("provider-specific detail")
 
     monkeypatch.setattr("app.routers.insights.analyze_records", fail_analysis)

@@ -42,6 +42,7 @@ def test_document_job_serializes_exact_v1_schema() -> None:
     [
         {**VALID_JOB, "schema_version": 2},
         {**VALID_JOB, "unexpected": "field"},
+        {key: value for key, value in VALID_JOB.items() if key != "schema_version"},
         {key: value for key, value in VALID_JOB.items() if key != "trace_id"},
     ],
 )
@@ -78,3 +79,22 @@ def test_sqs_publisher_converts_provider_failure_to_stable_error() -> None:
             client=client,
             queue_url="https://sqs.example.test/queue",
         )
+
+
+def test_sqs_publisher_uses_the_callers_region(monkeypatch) -> None:
+    client = Mock()
+    client.send_message.return_value = {"MessageId": "message-123"}
+    boto3_client = Mock(return_value=client)
+    monkeypatch.setattr("app.services.sqs_service.boto3.client", boto3_client)
+    monkeypatch.setattr(
+        "app.services.sqs_service.get_settings",
+        lambda: pytest.fail("explicit queue configuration must not reload process settings"),
+    )
+
+    send_document_for_processing(
+        DocumentJob.model_validate(VALID_JOB),
+        queue_url="https://sqs.example.test/queue",
+        region="us-east-1",
+    )
+
+    boto3_client.assert_called_once_with("sqs", region_name="us-east-1")

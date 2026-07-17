@@ -1,8 +1,6 @@
 """Validated document storage adapters for local development and Amazon S3."""
 
-import csv
 import hashlib
-import io
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -11,9 +9,9 @@ from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import Depends
 
 from app.core.config import Settings, get_settings
+from app.services.csv_service import REQUIRED_HEADERS, financial_csv_reader
 
 MAX_UPLOAD_BYTES = 1024 * 1024
-REQUIRED_HEADERS = {"date", "description", "amount", "category"}
 
 
 class UploadValidationError(ValueError):
@@ -62,8 +60,11 @@ def validate_csv_upload(content: bytes) -> ValidatedUpload:
     except UnicodeDecodeError as exc:
         raise UploadValidationError("CSV upload must contain valid UTF-8") from exc
 
-    reader = csv.DictReader(io.StringIO(text))
-    headers = {header.strip() for header in (reader.fieldnames or []) if header}
+    try:
+        reader = financial_csv_reader(text)
+    except ValueError as exc:
+        raise UploadValidationError(str(exc)) from exc
+    headers = set(reader.fieldnames or [])
     missing_headers = sorted(REQUIRED_HEADERS - headers)
     if missing_headers:
         raise UploadValidationError(

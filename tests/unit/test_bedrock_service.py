@@ -8,6 +8,7 @@ import pytest
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
+from app.core.config import Settings
 from app.services.bedrock_service import (
     BedrockServiceError,
     analyze_records,
@@ -86,3 +87,20 @@ def test_provider_errors_are_converted_to_stable_service_error() -> None:
         ask_claude("analyze", client=client)
 
     assert "provider detail" not in str(error.value)
+
+
+def test_bedrock_request_uses_injected_application_settings() -> None:
+    client = Mock()
+    client.invoke_model.return_value = bedrock_response("ok")
+    settings = Settings.from_mapping(
+        {
+            "ENV": "local",
+            "API_KEY": "test-key",
+            "DATABASE_URL": "sqlite:///test.db",
+            "BEDROCK_MODEL_ID": "injected-model-id",
+        }
+    )
+
+    ask_claude("analyze", client=client, settings=settings)
+
+    assert client.invoke_model.call_args.kwargs["modelId"] == "injected-model-id"

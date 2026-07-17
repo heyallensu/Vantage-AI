@@ -1,7 +1,9 @@
 """SQLAlchemy models matching the Alembic-managed database schema."""
 
 from datetime import datetime, timezone
+from functools import lru_cache
 
+from fastapi import Depends
 from sqlalchemy import (
     CheckConstraint,
     Column,
@@ -16,7 +18,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.database import resolve_database_url
 
 Base = declarative_base()
@@ -87,28 +89,28 @@ class Record(Base):
     )
 
 
-# ─── Database connection ──────────────────────────────────────
-settings = get_settings()
-DATABASE_URL = resolve_database_url(
-    database_url=settings.database_url,
-    secret_arn=settings.db_secret_arn,
-    database_name=settings.db_name,
-    region=settings.aws_region,
-)
+@lru_cache
+def _session_factory(settings: Settings):
+    """Create one connection pool for each validated application configuration."""
+    database_url = resolve_database_url(
+        database_url=settings.database_url,
+        secret_arn=settings.db_secret_arn,
+        database_name=settings.db_name,
+        region=settings.aws_region,
+    )
+    engine_options = {"pool_pre_ping": True, "pool_timeout": 3}
+    if database_url.startswith(("postgresql://", "postgres://")):
+        engine_options["connect_args"] = {
+            "connect_timeout": 3,
+            "options": "-c statement_timeout=2000",
+        }
+    engine = create_engine(database_url, **engine_options)
+    return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
-engine_options = {"pool_pre_ping": True, "pool_timeout": 3}
-if DATABASE_URL.startswith(("postgresql://", "postgres://")):
-    engine_options["connect_args"] = {
-        "connect_timeout": 3,
-        "options": "-c statement_timeout=2000",
-    }
-engine = create_engine(DATABASE_URL, **engine_options)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
-
-def get_db():
+def get_db(settings: Settings = Depends(get_settings)):
     """FastAPI dependency — yields a DB session, closes it when done."""
-    db = SessionLocal()
+    db = _session_factory(settings)()
     try:
         yield db
     except Exception:

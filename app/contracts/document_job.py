@@ -10,7 +10,7 @@ class DocumentJob(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
-    schema_version: Literal[1] = 1
+    schema_version: Literal[1]
     document_id: str = Field(min_length=1)
     bucket: str = Field(min_length=1)
     object_key: str = Field(min_length=1)

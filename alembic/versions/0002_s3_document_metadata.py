@@ -17,6 +17,28 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    op.execute(
+        """
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM documents
+            WHERE status IS NOT NULL
+              AND status NOT IN ('pending', 'processing', 'completed', 'failed')
+          ) THEN
+            RAISE EXCEPTION 'Legacy documents contain unsupported status values';
+          END IF;
+          IF EXISTS (
+            SELECT 1
+            FROM records r
+            LEFT JOIN documents d ON d.id = r.document_id
+            WHERE d.id IS NULL
+          ) THEN
+            RAISE EXCEPTION 'Legacy records contain orphaned document_id values';
+          END IF;
+        END $$;
+        """
+    )
     op.execute("UPDATE documents SET status = 'pending' WHERE status IS NULL")
     op.execute("UPDATE documents SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL")
     op.execute("UPDATE documents SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL")

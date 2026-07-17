@@ -31,9 +31,13 @@ def test_validate_csv_upload_returns_text_and_checksum() -> None:
     [
         (b"\xff\xfe", "valid UTF-8"),
         (b"date,amount\n2024-01-01,42\n", "Missing required CSV headers"),
+        (
+            b"date,description, amount,amount,category\n2024-01-01,x,1,2,c\n",
+            "unique after whitespace normalization",
+        ),
         (b"x" * (MAX_UPLOAD_BYTES + 1), "1 MiB"),
     ],
-    ids=["invalid-utf8", "missing-headers", "too-large"],
+    ids=["invalid-utf8", "missing-headers", "duplicate-headers", "too-large"],
 )
 def test_validate_csv_upload_rejects_invalid_content(content: bytes, message: str) -> None:
     with pytest.raises(UploadValidationError, match=message):

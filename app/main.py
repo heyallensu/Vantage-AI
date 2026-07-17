@@ -6,6 +6,7 @@ import time
 import uuid
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -51,6 +52,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             status_code = response.status_code
             response.headers["X-Request-ID"] = request_id
             return response
+        except Exception:
+            access_logger.exception(
+                "request_failed",
+                extra={"route": request.url.path, "request_id": request_id},
+            )
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Internal server error"},
+                headers={"X-Request-ID": request_id},
+            )
         finally:
             fields = {
                 "route": request.url.path,
