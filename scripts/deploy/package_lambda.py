@@ -10,7 +10,10 @@ from pathlib import Path
 
 from scripts.deploy.provenance import verify_provenance
 
-SAM_BUILD_IMAGE = "public.ecr.aws/sam/build-python3.12:1.141.0"
+SAM_BUILD_IMAGE = (
+    "public.ecr.aws/sam/build-python3.12@"
+    "sha256:a62d05eb8829ca1ef9d428337e4989e3074d25e41864bdc58085da5b34d18ef5"
+)
 
 
 def extract_lambda_source(repo: Path, full_sha: str, destination: Path) -> Path:

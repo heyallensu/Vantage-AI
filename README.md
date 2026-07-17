@@ -23,7 +23,7 @@ Vantage AI is a production-oriented project for demonstrating the engineering ar
 | Test depth | 88.46% branch-aware Python coverage; minimum gate remains 70% |
 | Database evolution | Full Alembic history tested against PostgreSQL 16 in CI |
 | Infrastructure | Bootstrap plus L0/L1/L2 Terraform roots initialize without backend credentials and validate successfully |
-| Security scanning | `pip-audit` clean; Trivy reports zero HIGH/CRITICAL IaC and secret findings |
+| Security scanning | `pip-audit` clean; Trivy blocks fixable HIGH/CRITICAL image findings and all HIGH/CRITICAL IaC findings |
 | Artifact integrity | API image is Git-archive-built and digest-pinned; Lambda ZIP and every saved Terraform plan are checksum-bound |
 
 These results are reproducible with `make check` and `make tf-check`. CI also builds the Linux Lambda package and scans the final container image without receiving AWS credentials.
