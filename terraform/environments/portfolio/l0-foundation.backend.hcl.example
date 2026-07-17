@@ -1,0 +1,7 @@
+bucket               = "<bootstrap-state-bucket-output>"
+key                  = "l0-foundation/terraform.tfstate"
+region               = "ap-southeast-2"
+encrypt              = true
+use_lockfile          = true
+workspace_key_prefix = "vantage-ai"
+allowed_account_ids   = ["<approved-account-id>"]

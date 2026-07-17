@@ -1,7 +1,10 @@
 aws_region = "ap-southeast-2"
 project_name = "vantage-ai"
-environment = "dev"
 app_name = "vantage-ai"
+
+state_bucket               = "<bootstrap-state-bucket-output>"
+state_region               = "ap-southeast-2"
+state_workspace_key_prefix = "vantage-ai"
 
 queue_visibility_timeout_seconds = 120
 queue_message_retention_seconds = 345600

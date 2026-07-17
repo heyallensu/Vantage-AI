@@ -91,7 +91,7 @@ resource "aws_ecs_task_definition" "app" {
       environment = [
         {
           name  = "ENV"
-          value = "dev"
+          value = var.environment
         },
         {
           name  = "AWS_DEFAULT_REGION"

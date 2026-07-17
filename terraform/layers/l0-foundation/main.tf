@@ -1,5 +1,7 @@
 terraform {
-  required_version = ">= 1.6.0"
+  required_version = ">= 1.10.0"
+
+  backend "s3" {}
 
   required_providers {
     aws = {
@@ -10,11 +12,21 @@ terraform {
 }
 
 provider "aws" {
-  region = var.aws_region
+  region              = var.aws_region
+  allowed_account_ids = [var.allowed_account_id]
+}
+
+data "aws_caller_identity" "current" {}
+
+check "caller_account_is_allowed" {
+  assert {
+    condition     = data.aws_caller_identity.current.account_id == var.allowed_account_id
+    error_message = "Refusing to operate outside the explicitly allowed AWS account."
+  }
 }
 
 locals {
-  environment = terraform.workspace == "default" ? var.environment : terraform.workspace
+  environment = terraform.workspace
   name_prefix = "${var.project_name}-${local.environment}"
 }
 

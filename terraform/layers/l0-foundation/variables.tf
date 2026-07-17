@@ -4,16 +4,20 @@ variable "aws_region" {
   default     = "ap-southeast-2"
 }
 
+variable "allowed_account_id" {
+  description = "The only AWS account in which this root module may operate."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9]{12}$", var.allowed_account_id))
+    error_message = "allowed_account_id must be a 12-digit AWS account ID."
+  }
+}
+
 variable "project_name" {
   description = "The name of the project. This will be used as a prefix for resource names."
   type        = string
   default     = "vantage-ai"
-}
-
-variable "environment" {
-  description = "The deployment environment (e.g., dev, staging, prod). This will be used as a suffix for resource names."
-  type        = string
-  default     = "dev"
 }
 
 variable "vpc_cidr" {

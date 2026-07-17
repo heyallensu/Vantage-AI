@@ -1,0 +1,4 @@
+# Copy to terraform/bootstrap/terraform.tfvars. Never commit the populated file.
+github_owner               = "<github-owner>"
+github_repository          = "<github-repository>"
+state_bucket_unique_suffix = "<globally-unique-lowercase-suffix>"

@@ -1,5 +1,7 @@
 terraform {
-  required_version = ">= 1.6.0"
+  required_version = ">= 1.10.0"
+
+  backend "s3" {}
 
   required_providers {
     aws = {
@@ -10,11 +12,21 @@ terraform {
 }
 
 provider "aws" {
-  region = var.aws_region
+  region              = var.aws_region
+  allowed_account_ids = [var.allowed_account_id]
+}
+
+data "aws_caller_identity" "current" {}
+
+check "caller_account_is_allowed" {
+  assert {
+    condition     = data.aws_caller_identity.current.account_id == var.allowed_account_id
+    error_message = "Refusing to operate outside the explicitly allowed AWS account."
+  }
 }
 
 locals {
-  environment = terraform.workspace == "default" ? var.environment : terraform.workspace
+  environment = terraform.workspace
   name_prefix = "${var.project_name}-${local.environment}"
 
   database_url = "postgresql://${var.db_username}:${var.db_password}@${module.rds.db_address}:${module.rds.db_port}/${module.rds.db_name}"
@@ -23,18 +35,28 @@ locals {
 }
 
 data "terraform_remote_state" "l0" {
-  backend = "local"
+  backend   = "s3"
+  workspace = terraform.workspace
 
   config = {
-    path = "../../l0-foundation/terraform.tfstate.d/dev/terraform.tfstate"
+    bucket               = var.state_bucket
+    key                  = "l0-foundation/terraform.tfstate"
+    region               = var.state_region
+    workspace_key_prefix = var.state_workspace_key_prefix
+    allowed_account_ids  = [var.allowed_account_id]
   }
 }
 
 data "terraform_remote_state" "l1" {
-  backend = "local"
+  backend   = "s3"
+  workspace = terraform.workspace
 
   config = {
-    path = "../../l1-platform/terraform.tfstate.d/dev/terraform.tfstate"
+    bucket               = var.state_bucket
+    key                  = "l1-platform/terraform.tfstate"
+    region               = var.state_region
+    workspace_key_prefix = var.state_workspace_key_prefix
+    allowed_account_ids  = [var.allowed_account_id]
   }
 }
 
@@ -92,6 +114,7 @@ module "ecs_service" {
   source = "./modules/ecs-service"
 
   name_prefix            = local.name_prefix
+  environment            = local.environment
   vpc_id                 = data.terraform_remote_state.l0.outputs.vpc_id
   subnet_ids             = data.terraform_remote_state.l0.outputs.public_subnet_ids
   assign_public_ip       = true

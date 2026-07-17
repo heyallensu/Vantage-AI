@@ -1,0 +1,7 @@
+aws_region = "ap-southeast-2"
+project_name = "vantage-ai"
+log_retention_days = 14
+
+state_bucket                  = "<bootstrap-state-bucket-output>"
+state_region                  = "ap-southeast-2"
+state_workspace_key_prefix    = "vantage-ai"

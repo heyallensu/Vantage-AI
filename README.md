@@ -95,57 +95,73 @@ Use [.env.example](.env.example) only as a local template. Production secrets be
 
 ### Prerequisites
 
-- AWS CLI configured with admin credentials
-- Terraform ≥ 1.6.0
+- A personally controlled, isolated AWS account with reviewed short-lived credentials
+- Terraform ≥ 1.10.0 (required for native S3 state locking)
 - Docker (with BuildKit for `linux/amd64` cross-build)
-- GitHub repo with `AWS_GITHUB_DEPLOY_ROLE_ARN` secret (for CI/CD OIDC)
+- A GitHub repository whose owner/name will be bound into the OIDC trust policy
 
-### Step 1 — Infrastructure
+This repository supports only the ephemeral `portfolio` environment. The safety
+contract is plan → apply → capture evidence → destroy within one short validation
+window. No real account IDs, backend coordinates, passwords, or repository values
+belong in Git.
+
+### Step 1 — Bootstrap state and OIDC once
 
 ```bash
-# Copy and edit tfvars
-cp terraform/dev/l0-foundation/terraform.tfvars.example terraform/dev/l0-foundation/terraform.tfvars
-cp terraform/dev/l1-platform/terraform.tfvars.example    terraform/dev/l1-platform/terraform.tfvars
-cp terraform/dev/l2-application/vantage-ai/terraform.tfvars.example \
-   terraform/dev/l2-application/vantage-ai/terraform.tfvars
-# Edit L2 tfvars with short-lived values for an isolated test account
+# Local files below are ignored. Replace every placeholder before use.
+cp terraform/bootstrap/terraform.tfvars.example terraform/bootstrap/terraform.tfvars
+printf '%s\n' '<your-12-digit-account-id>' > .aws-account-id
 
-# Initialize all layers
+# Creates the protected S3 state bucket and repository-scoped GitHub OIDC role.
+# Terraform prompts for confirmation; review it before accepting.
+make bootstrap
+```
+
+The bootstrap stack deliberately retains local state. Store
+`terraform/bootstrap/bootstrap.tfstate` securely. Use its outputs to populate
+the ignored backend and environment files described in
+[terraform/environments/portfolio/README.md](terraform/environments/portfolio/README.md).
+
+### Step 2 — Check and initialize the three layers
+
+```bash
+# Uses no AWS credentials or backend; a cold provider cache still downloads
+# providers from the Terraform registry.
+make tf-check
+
 make tf-init
 make tf-workspace
 
-# Deploy layer by layer
-make tf-apply-l0   # VPC, subnets (~2 min)
-make tf-apply-l1   # ECS cluster, ECR, ALB (~5 min)
+# Review all three plans in dependency order. This requires .aws-account-id.
+export TF_VAR_db_password='<short-lived-database-password>'
+make tf-plan
 
 # Build Lambda package (Linux x86_64)
 make lambda-package
 
-make tf-apply-l2   # SQS, RDS, Lambda, ECS service (~10 min)
+# Apply only after reviewing the plans; each layer keeps Terraform confirmation.
+make tf-apply
 ```
 
-### Step 2 — Build & Deploy the App
+### Step 3 — Build and deploy the app
 
 ```bash
-# Build Docker image (linux/amd64), push to ECR, deploy
+# ECR repository/registry and ECS cluster/service names come from Terraform outputs.
 make push && make deploy
 
-# Wait ~60s for Fargate task to start, then verify
-ALB=$(terraform -chdir=terraform/dev/l2-application/vantage-ai output -raw shared_alb_dns_name 2>/dev/null \
-  || aws elbv2 describe-load-balancers --names vantage-ai-dev-shared-alb \
-       --region ap-southeast-2 --query 'LoadBalancers[0].DNSName' --output text)
+ALB=$(terraform -chdir=terraform/layers/l1-platform output -raw shared_alb_dns_name)
 
 curl "http://$ALB/health"
 # → {"status":"ok","version":"1.0.0"}
 ```
 
-### Step 3 — Enable Bedrock Model Access
+### Step 4 — Enable Bedrock model access
 
 1. AWS Console → Bedrock → Model access → Request access
 2. Search "Claude Haiku 4.5" → check → Submit
 3. Wait 2–5 minutes
 
-### Step 4 — Verify End-to-End
+### Step 5 — Verify end to end
 
 ```bash
 ALB="http://<your-alb-dns>"
@@ -175,28 +191,24 @@ curl -H "X-API-Key: $API_KEY" \
 
 ## CI/CD
 
-Push to `main` triggers the GitHub Actions workflow (`.github/workflows/deploy.yml`):
-
-```
-Lint and Test → Build & Push to ECR → Deploy to ECS → Smoke Test
-```
-
-Required GitHub secret:
-- `AWS_GITHUB_DEPLOY_ROLE_ARN` — IAM role ARN for OIDC-based AWS auth
+Automatic deployment is intentionally disabled while the repository is being
+separated from the former project environment. Pull-request quality gates and
+the later manual portfolio demo workflow must not contain fixed AWS resource
+names; they resolve deployment coordinates from the `portfolio` Terraform
+outputs.
 
 ## Destroy Everything
 
 ```bash
-make destroy
-# ⚠️  Destroys L2 → L1 → L0. Irreversible.
+make tf-destroy
+# Destroys L2 → L1 → L0, with Terraform confirmation for each layer.
 ```
 
-Or destroy individual layers:
-```bash
-make tf-destroy-l2
-make tf-destroy-l1
-make tf-destroy-l0
-```
+The protected bootstrap bucket is not part of routine environment cleanup. See
+[ADR 001](docs/adr/001-ephemeral-portfolio-environment.md) and
+[ADR 002](docs/adr/002-terraform-state-and-layering.md) for lifecycle and state
+ownership decisions. This repository configuration has been validated offline;
+these instructions do not claim that a real AWS deployment has occurred.
 
 ## Project Structure
 
@@ -218,10 +230,10 @@ make tf-destroy-l0
 ├── lambda/processor/        # Lambda function for async CSV processing
 │   ├── handler.py           # SQS-triggered, parses CSV → RDS
 │   └── package.zip          # Pre-built deployment package (x86_64)
-├── terraform/dev/           # Infrastructure as Code (3 layers)
-│   ├── l0-foundation/       # VPC, subnets, IGW, security baseline
-│   ├── l1-platform/         # ECS cluster, ECR, ALB, monitoring
-│   └── l2-application/      # SQS, RDS, Lambda, IAM, ECS service, alarms
+├── terraform/
+│   ├── bootstrap/           # Local-state S3 backend and GitHub OIDC bootstrap
+│   ├── environments/portfolio/ # Safe examples; populated values stay ignored
+│   └── layers/              # L0 foundation → L1 platform → L2 application
 ├── .github/workflows/       # CI/CD (GitHub Actions)
 ├── docker-compose.yml       # Local dev (API + PostgreSQL)
 ├── Makefile                 # All project commands
