@@ -96,6 +96,8 @@ def _session_factory(settings: Settings):
         database_url=settings.database_url,
         secret_arn=settings.db_secret_arn,
         database_name=settings.db_name,
+        database_host=settings.db_host,
+        database_port=settings.db_port,
         region=settings.aws_region,
     )
     engine_options = {"pool_pre_ping": True, "pool_timeout": 3}

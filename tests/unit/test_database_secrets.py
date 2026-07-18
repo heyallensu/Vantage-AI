@@ -16,6 +16,7 @@ def test_settings_accept_managed_database_secret_in_production() -> None:
             "API_KEY": "runtime-api-key",
             "AWS_DEFAULT_REGION": "ap-southeast-2",
             "DB_SECRET_ARN": "arn:aws:secretsmanager:ap-southeast-2:123456789012:secret:db",
+            "DB_HOST": "db.internal",
             "DB_NAME": "vantage",
             "DOCUMENT_BUCKET": "documents",
             "SQS_QUEUE_URL": "https://sqs.example/queue",
@@ -78,6 +79,26 @@ def test_resolve_database_url_reads_secret_string() -> None:
 
     assert resolved == "postgresql://vantage:managed-password@db.internal:5432/vantage"
     client.get_secret_value.assert_called_once()
+
+
+def test_resolve_database_url_combines_managed_credentials_with_rds_endpoint() -> None:
+    client = Mock()
+    client.get_secret_value.return_value = {
+        "SecretString": json.dumps(
+            {"username": "vantage", "password": "managed-password"}
+        )
+    }
+
+    resolved = resolve_database_url(
+        database_url="",
+        secret_arn="arn:aws:secretsmanager:ap-southeast-2:123456789012:secret:db",
+        database_name="vantage",
+        database_host="db.internal",
+        database_port=5432,
+        client=client,
+    )
+
+    assert resolved == "postgresql://vantage:managed-password@db.internal:5432/vantage"
 
 
 def test_resolve_database_url_preserves_local_explicit_url() -> None:

@@ -48,8 +48,8 @@ def resolve_database_url(*, client=None) -> str:
         secret = json.loads(response["SecretString"])
         username = str(secret["username"])
         password = str(secret["password"])
-        host = str(secret["host"])
-        port = int(secret.get("port", 5432))
+        host = str(secret.get("host") or os.getenv("DB_HOST", ""))
+        port = int(secret.get("port", os.getenv("DB_PORT", "5432")))
         database = str(
             secret.get("dbname") or secret.get("database") or os.getenv("DB_NAME", "")
         )

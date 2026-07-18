@@ -85,7 +85,7 @@ require-portfolio-workspaces:
 	@for directory in $(L0_DIR) $(L1_DIR) $(L2_DIR); do workspace="$$(terraform -chdir="$$directory" workspace show)"; test "$$workspace" = "$(SUPPORTED_ENV)" || { echo "$$directory must use the $(SUPPORTED_ENV) workspace; found $$workspace." >&2; exit 1; }; done
 
 require-layer-config:
-	@for file in $(L0_TFVARS) $(L1_TFVARS) $(L2_TFVARS) $(L0_BACKEND) $(L1_BACKEND) $(L2_BACKEND); do test -s "$$file" || { echo "Missing or empty $$file; copy its .example file and replace placeholders." >&2; exit 1; }; if grep -Eq '<[^>]+>' "$$file"; then echo "Unresolved placeholder in $$file." >&2; exit 1; fi; terraform fmt -check "$$file" >/dev/null || { echo "Invalid or unformatted Terraform configuration: $$file." >&2; exit 1; }; done
+	@for file in $(L0_TFVARS) $(L1_TFVARS) $(L2_TFVARS) $(L0_BACKEND) $(L1_BACKEND) $(L2_BACKEND); do test -s "$$file" || { echo "Missing or empty $$file; copy its .example file and replace placeholders." >&2; exit 1; }; if grep -Eq '<[^>]+>' "$$file"; then echo "Unresolved placeholder in $$file." >&2; exit 1; fi; case "$$file" in *.tfvars) terraform fmt -check "$$file" >/dev/null || { echo "Invalid or unformatted Terraform configuration: $$file." >&2; exit 1; } ;; esac; done
 
 require-bootstrap-config:
 	@test -f $(BOOTSTRAP_DIR)/terraform.tfvars || { echo "Missing $(BOOTSTRAP_DIR)/terraform.tfvars; copy terraform.tfvars.example and replace placeholders." >&2; exit 1; }

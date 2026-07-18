@@ -136,6 +136,8 @@ module "lambda_processor" {
   lambda_security_group_id  = module.network_access.lambda_security_group_id
   sqs_queue_arn             = module.sqs.queue_arn
   database_secret_arn       = module.rds.database_secret_arn
+  database_host             = module.rds.db_address
+  database_port             = module.rds.db_port
   database_name             = module.rds.db_name
 
   depends_on = [module.iam, module.vpc_endpoints]
@@ -171,6 +173,8 @@ module "ecs_service" {
   health_check_path      = var.health_check_path
   sqs_queue_url          = module.sqs.queue_url
   database_secret_arn    = module.rds.database_secret_arn
+  database_host          = module.rds.db_address
+  database_port          = module.rds.db_port
   database_name          = module.rds.db_name
   document_bucket_name   = module.storage.document_bucket_name
   api_key_secret_arn     = module.iam.api_key_secret_arn

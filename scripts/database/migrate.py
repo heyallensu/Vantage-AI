@@ -81,6 +81,8 @@ def upgrade_database(
         database_url=database_url or os.getenv("DATABASE_URL", ""),
         secret_arn=os.getenv("DB_SECRET_ARN", ""),
         database_name=os.getenv("DB_NAME", "vantage"),
+        database_host=os.getenv("DB_HOST", ""),
+        database_port=int(os.getenv("DB_PORT", "5432")),
         region=os.getenv("AWS_DEFAULT_REGION"),
     )
 

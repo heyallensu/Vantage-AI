@@ -30,6 +30,8 @@ resource "aws_lambda_function" "processor" {
   environment {
     variables = {
       DB_SECRET_ARN = var.database_secret_arn
+      DB_HOST       = var.database_host
+      DB_PORT       = tostring(var.database_port)
       DB_NAME       = var.database_name
     }
   }

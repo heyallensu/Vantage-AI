@@ -37,4 +37,6 @@ variable "sqs_queue_arn" {
 }
 
 variable "database_secret_arn" { type = string }
+variable "database_host" { type = string }
+variable "database_port" { type = number }
 variable "database_name" { type = string }
