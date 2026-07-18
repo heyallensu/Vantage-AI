@@ -7,6 +7,11 @@ from urllib.parse import quote
 import boto3
 
 
+def alembic_config_value(database_url: str) -> str:
+    """Escape ConfigParser interpolation without changing the resolved URL."""
+    return database_url.replace("%", "%%")
+
+
 def build_database_url(
     secret: Mapping[str, object],
     *,

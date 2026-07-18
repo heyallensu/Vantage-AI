@@ -6,7 +6,7 @@ from sqlalchemy import String, create_engine, inspect
 
 from alembic import command
 from alembic.config import Config
-from app.core.database import resolve_database_url
+from app.core.database import alembic_config_value, resolve_database_url
 
 LEGACY_SCHEMA_COLUMNS = {
     "documents": {
@@ -87,7 +87,7 @@ def upgrade_database(
     )
 
     config = Config(config_path)
-    config.set_main_option("sqlalchemy.url", resolved_url)
+    config.set_main_option("sqlalchemy.url", alembic_config_value(resolved_url))
     config.attributes["database_url"] = resolved_url
 
     engine = create_engine(resolved_url, pool_pre_ping=True)

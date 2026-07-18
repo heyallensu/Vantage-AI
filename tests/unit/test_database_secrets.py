@@ -6,7 +6,11 @@ from unittest.mock import Mock
 import pytest
 
 from app.core.config import ConfigurationError, Settings
-from app.core.database import build_database_url, resolve_database_url
+from app.core.database import (
+    alembic_config_value,
+    build_database_url,
+    resolve_database_url,
+)
 
 
 def test_settings_accept_managed_database_secret_in_production() -> None:
@@ -54,6 +58,14 @@ def test_build_database_url_escapes_managed_secret_credentials() -> None:
     assert url == (
         "postgresql://vantage%40example.com:p%40ss%2Fword%3F@"
         "db.internal:5432/vantage"
+    )
+
+
+def test_alembic_config_value_escapes_percent_interpolation() -> None:
+    value = "postgresql://vantage:p%40ss@db.internal:5432/vantage"
+
+    assert alembic_config_value(value) == (
+        "postgresql://vantage:p%%40ss@db.internal:5432/vantage"
     )
 
 
