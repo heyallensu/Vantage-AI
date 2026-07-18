@@ -6,12 +6,19 @@ GET  /insights/summary    — plain English summary
 GET  /insights/anomalies  — AI-flagged anomalies
 """
 
-from fastapi        import APIRouter, Depends, Query, HTTPException
-from sqlalchemy.orm import Session
-from typing         import Optional
+from typing import Optional
 
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+
+from app.core.config import Settings, get_settings
 from app.models.record import Record, get_db
-from app.services.bedrock_service import analyze_records, generate_summary, find_anomalies
+from app.services.bedrock_service import (
+    BedrockServiceError,
+    analyze_records,
+    find_anomalies,
+    generate_summary,
+)
 
 router_insights = APIRouter(prefix="/insights", tags=["insights"])
 
@@ -34,30 +41,46 @@ def _get_records_for_analysis(document_id: Optional[str], db: Session) -> list[d
 def analyze(
     document_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
     """
     Run a full AI analysis on all records for a document.
     Returns: totals, top categories, summary, anomalies.
     """
     records = _get_records_for_analysis(document_id, db)
-    return analyze_records(records)
+    try:
+        return analyze_records(records, settings=settings)
+    except BedrockServiceError as exc:
+        raise _bedrock_http_error() from exc
 
 
 @router_insights.get("/summary")
 def summary(
     document_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
     """Return a plain English summary of the dataset."""
     records = _get_records_for_analysis(document_id, db)
-    return {"summary": generate_summary(records)}
+    try:
+        return {"summary": generate_summary(records, settings=settings)}
+    except BedrockServiceError as exc:
+        raise _bedrock_http_error() from exc
 
 
 @router_insights.get("/anomalies")
 def anomalies(
     document_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
     """Return a list of anomalies flagged by AI."""
     records = _get_records_for_analysis(document_id, db)
-    return {"anomalies": find_anomalies(records)}
+    try:
+        return {"anomalies": find_anomalies(records, settings=settings)}
+    except BedrockServiceError as exc:
+        raise _bedrock_http_error() from exc
+
+
+def _bedrock_http_error() -> HTTPException:
+    return HTTPException(status_code=502, detail="AI analysis is temporarily unavailable")

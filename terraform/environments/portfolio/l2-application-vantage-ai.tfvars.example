@@ -1,0 +1,48 @@
+aws_region = "ap-southeast-2"
+project_name = "vantage-ai"
+app_name = "vantage-ai"
+owner    = "<owner-or-team>"
+expires_at = "2026-07-31"
+
+state_bucket               = "<bootstrap-state-bucket-output>"
+state_region               = "ap-southeast-2"
+state_workspace_key_prefix = "vantage-ai"
+
+queue_visibility_timeout_seconds = 360
+queue_message_retention_seconds = 345600
+queue_max_receive_count = 5
+
+db_name = "vantage"
+db_username = "vantage"
+db_instance_class = "db.t4g.micro"
+db_allocated_storage = 20
+db_backup_retention_period = 1
+db_deletion_protection = false
+db_skip_final_snapshot = true
+
+lambda_runtime = "python3.12"
+lambda_handler = "handler.handler"
+lambda_timeout_seconds = 60
+lambda_memory_size = 256
+lambda_package_path = "../../../../lambda/processor/package.zip"
+
+app_container_port = 8000
+app_desired_count = 1
+app_cpu = 256
+app_memory = 512
+# Parse-only placeholders. The saved-plan coordinator always overrides both
+# values from ignored trusted deployment metadata.
+app_image_tag    = "000000000000"
+app_image_digest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+health_check_path = "/health"
+bedrock_model_id = "au.anthropic.claude-haiku-4-5-20251001-v1:0"
+bedrock_invoke_resource_arns = [
+  "arn:aws:bedrock:<profile-region>:<aws-account-id>:inference-profile/<actual-profile-id>",
+  "arn:aws:bedrock:<destination-region>::foundation-model/<actual-destination-model-id>",
+]
+cloudfront_price_class = "PriceClass_100"
+document_retention_days = 7
+
+alarm_actions = []
+lambda_error_threshold = 1
+dlq_visible_messages_threshold = 1

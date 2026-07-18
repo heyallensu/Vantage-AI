@@ -5,9 +5,10 @@ GET /records           — list all records (with optional filters)
 GET /records/{id}      — single record
 """
 
-from fastapi        import APIRouter, Depends, Query, HTTPException
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing         import Optional
 
 from app.models.record import Record, get_db
 

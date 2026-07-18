@@ -1,221 +1,209 @@
-# Vantage-AI
+<p align="center">
+  <img src="./assets/readme/hero.svg" width="100%" alt="Vantage AI secure ephemeral AWS document intelligence pipeline">
+</p>
 
-An Intelligent Document Processing Platform — upload CSV documents, extract records asynchronously, and get AI-powered insights via Amazon Bedrock.
+<p align="center">
+  <strong>Upload financial CSVs, process them asynchronously, and turn verified records into Amazon Bedrock insights.</strong>
+</p>
 
-## Architecture
+<p align="center">
+  <a href="#see-it-work-locally">Run locally</a> ·
+  <a href="#system-design">Architecture</a> ·
+  <a href="#engineering-decisions">Engineering decisions</a> ·
+  <a href="#deploy-to-aws">AWS deployment</a>
+</p>
 
-```
-Client → ALB (HTTP :80) → ECS Fargate (FastAPI :8000)
-                              │
-                              ▼
-                           SQS Queue ──→ Lambda (processor)
-                              │              │
-                              ▼              ▼
-                    Amazon Bedrock      RDS PostgreSQL
-                    (Claude Haiku 4.5)
-```
+## Proof before promises
 
-| Component | Technology |
+Vantage AI is a production-oriented project for demonstrating the engineering around an AWS workload—not only the happy-path API.
+
+| Quality signal | Engineering evidence |
 |---|---|
-| API | FastAPI (Python 3.12), Uvicorn |
-| Database | PostgreSQL 16 (RDS) |
-| Message Queue | Amazon SQS + DLQ |
-| Async Processing | AWS Lambda (VPC-attached) |
-| AI Analysis | Amazon Bedrock — Claude Haiku 4.5 (Inference Profile) |
-| Container Runtime | ECS Fargate |
-| Load Balancer | Application Load Balancer |
-| Infra as Code | Terraform (3 layers: Foundation → Platform → Application) |
-| CI/CD | GitHub Actions (OIDC) |
+| Application behavior | 104 automated tests across API, migrations, storage, security, queue contracts, Lambda, and deployment safeguards |
+| Test depth | 87.94% branch-aware Python coverage; minimum gate remains 70% |
+| Database evolution | Full Alembic history tested against PostgreSQL 16 in CI |
+| Infrastructure | Bootstrap plus L0/L1/L2 Terraform roots initialize without backend credentials and validate successfully |
+| Security scanning | `pip-audit` clean; Trivy blocks fixable HIGH/CRITICAL image findings and all HIGH/CRITICAL IaC findings |
+| Artifact integrity | API image is Git-archive-built and digest-pinned; Lambda ZIP and every saved Terraform plan are checksum-bound |
 
-## Data Flow
+These results are reproducible with `make check` and `make tf-check`. CI also builds the Linux Lambda package and scans the final container image without receiving AWS credentials.
 
-1. **Upload** — Client POSTs a CSV to `/documents/upload`
-2. **Queue** — API stores raw CSV in RDS and sends `document_id` to SQS
-3. **Process** — Lambda picks up the SQS message, parses CSV rows, inserts `Record` rows
-4. **Query** — Client polls `/documents/{id}/status` then fetches `/records`
-5. **Analyze** — Client calls `/insights/analyze` — API sends records to Bedrock for AI summary + anomaly detection
+## What this project demonstrates
 
-## API Endpoints
+- **A real asynchronous document contract:** S3 object key, schema version, trace ID, and SHA-256 checksum move through SQS to Lambda.
+- **Fail-closed cloud operations:** the AWS account and all three Terraform workspaces are verified before plan, apply, ECR access, or destroy.
+- **Runtime secret handling:** RDS owns the master password in Secrets Manager; ECS and Lambda receive an ARN, not a database URL containing credentials.
+- **Cost-aware architecture:** no NAT Gateway, one ECS task, Single-AZ RDS, short retention, and destroy-safe application buckets.
+- **Auditable delivery:** immutable ECR tags, `repository@sha256:...` task definitions, Git commit provenance, saved-plan manifests, and non-root containers.
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/health` | Health check |
-| `POST` | `/documents/upload` | Upload CSV (multipart form) |
-| `GET` | `/documents/{id}/status` | Check processing status |
-| `GET` | `/records` | List extracted records (filter by `document_id`, `category`) |
-| `GET` | `/records/{id}` | Single record |
-| `POST` | `/insights/analyze` | Full AI analysis (totals, categories, summary, anomalies) |
-| `GET` | `/insights/summary` | Plain-English summary |
-| `GET` | `/insights/anomalies` | AI-flagged anomalies |
-| `GET` | `/docs` | Swagger UI (local only) |
+## System design
 
-## Quick Start — Local Development
+<p align="center">
+  <img src="./assets/readme/architecture.svg" width="100%" alt="Vantage AI CloudFront, ECS, S3, SQS, Lambda, RDS, Secrets Manager, and Bedrock architecture">
+</p>
+
+CloudFront is the public entry point. It serves a private frontend bucket through Origin Access Control and forwards API routes to an ALB that only accepts the AWS-managed CloudFront origin-facing prefix list. ECS has outbound internet routing but no direct inbound rule.
+
+Lambda and RDS remain in private subnets. Lambda reaches only the document bucket through an S3 gateway endpoint, the managed database secret through a scoped Secrets Manager interface endpoint, and PostgreSQL through an explicit security-group relationship.
+
+### Document lifecycle
+
+1. **Validate** — FastAPI accepts a UTF-8 CSV up to 1 MiB and checks the required financial columns.
+2. **Store** — the API writes the original document to private, encrypted, versioned S3 with checksum metadata.
+3. **Queue** — SQS carries the document reference, checksum, schema version, document ID, and trace ID.
+4. **Process** — Lambda verifies the checksum, parses the CSV, and idempotently replaces that document's records in PostgreSQL.
+5. **Analyze** — authenticated API routes send the normalized records to a configured Bedrock inference profile for summaries and anomaly detection.
+
+## See it work locally
+
+### Requirements
+
+- Docker with Compose
+- `curl`
+- Optional: local AWS credentials for Bedrock insight calls
 
 ```bash
-# 1. Start API + PostgreSQL
+# Start FastAPI and PostgreSQL 16
 make dev
 
-# 2. Health check
+export API_KEY=local-development-only
+
+# Public liveness
 curl http://localhost:8000/health
 
-# 3. Upload sample CSV
-curl -X POST http://localhost:8000/documents/upload \
-  -F "file=@sample-data.csv"
+# Upload the included ten-row sample
+DOC_ID=$(curl -s -X POST http://localhost:8000/documents/upload \
+  -H "X-API-Key: $API_KEY" \
+  -F "file=@sample-data.csv" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["document_id"])')
 
-# 4. Check status (document processes instantly in local mode)
-curl http://localhost:8000/documents/<DOC_ID>/status
+# Local mode processes inline, so records are immediately queryable
+curl -H "X-API-Key: $API_KEY" \
+  "http://localhost:8000/records?document_id=$DOC_ID"
 
-# 5. View records
-curl "http://localhost:8000/records?document_id=<DOC_ID>"
-
-# 6. Stop
 make down
 ```
 
-> **Note:** Local mode (`ENV=local`) processes CSV inline without SQS/Lambda. Bedrock calls still require valid AWS credentials.
+Local mode deliberately replaces S3/SQS/Lambda with in-memory storage and inline processing so the core flow is testable without AWS charges. Bedrock calls still require valid local AWS credentials. The Compose container runs as UID/GID `10001` and reads an explicitly mounted, read-only profile from `/home/vantage/.aws`.
 
-## Deployment — AWS
+<details>
+<summary><strong>API surface</strong></summary>
 
-### Prerequisites
+| Method | Path | Purpose | Auth |
+|---|---|---|---|
+| `GET` | `/health` | Process liveness | Public |
+| `GET` | `/ready` | Database readiness | Public |
+| `POST` | `/documents/upload` | Validate and store a CSV | API key |
+| `GET` | `/documents/{id}/status` | Poll document processing | API key |
+| `GET` | `/records` | Filter records by document or category | API key |
+| `GET` | `/records/{id}` | Retrieve one record | API key |
+| `POST` | `/insights/analyze` | Totals, summary, categories, anomalies | API key |
+| `GET` | `/insights/summary` | Plain-language summary | API key |
+| `GET` | `/insights/anomalies` | AI-flagged anomalies | API key |
+| `GET` | `/docs` | OpenAPI UI | Local/documented access |
 
-- AWS CLI configured with admin credentials
-- Terraform ≥ 1.6.0
-- Docker (with BuildKit for `linux/amd64` cross-build)
-- GitHub repo with `AWS_GITHUB_DEPLOY_ROLE_ARN` secret (for CI/CD OIDC)
+All protected routes use `X-API-Key`. The comparison is timing-safe, and the key is excluded from structured request logs.
 
-### Step 1 — Infrastructure
+</details>
+
+## Engineering decisions
+
+| Constraint | Decision | Why it matters |
+|---|---|---|
+| project resources are not owned by this repository | A single `portfolio` environment with an allowlisted account and isolated state | Prevents accidental access to external resources |
+| NAT Gateway idle cost is disproportionate for a short demo | ECS uses a public subnet for outbound calls; Lambda uses private endpoints | Keeps the demo credible without paying for a mostly idle NAT |
+| CloudFront's default domain has no matching ALB certificate | Viewer HTTPS, CloudFront allowlist, HTTP origin hop | Honest short-term compromise; production should use custom DNS and end-to-end TLS |
+| Database passwords must not live in tfvars or task definitions | RDS-managed Secrets Manager password resolved at runtime | Removes plaintext database URLs from infrastructure configuration |
+| Mutable image tags weaken traceability | Immutable Git-SHA tag plus ECR digest in ECS | A reviewed commit maps to one deployed image |
+| A plan can drift or be replaced between review and apply | One saved plan per layer with SHA-256 manifests | A modified plan is rejected before Terraform runs |
+| Demo data and infrastructure must disappear | Seven-day document lifecycle and L2 → L1 → L0 destroy order | Limits storage retention and makes cleanup explicit |
+
+The detailed rationale lives in the [architecture decision records](docs/adr/).
+
+## Delivery and quality gates
+
+Pull requests and pushes to `main` or `feature/**` run a credential-free pipeline:
+
+```text
+workflow policy
+    ├── Python 3.12 + PostgreSQL 16 → Ruff → pytest/coverage → pip-audit
+    ├── Lambda package             → Linux AMD64 ZIP → import/compile check
+    ├── Terraform                  → fmt → backend-free init/validate → Trivy
+    └── API container              → local build → Trivy image scan
+```
+
+CI has `contents: read` only. It does not request OIDC, read repository secrets, push an image, call AWS APIs, or apply Terraform. Trivy is SHA-pinned; remaining action SHAs are a documented final-release hardening item and are tracked by Dependabot.
+
+Useful local gates:
 
 ```bash
-# Copy and edit tfvars
-cp terraform/dev/l0-foundation/terraform.tfvars.example terraform/dev/l0-foundation/terraform.tfvars
-cp terraform/dev/l1-platform/terraform.tfvars.example    terraform/dev/l1-platform/terraform.tfvars
-cp terraform/dev/l2-application/vantage-ai/terraform.tfvars.example \
-   terraform/dev/l2-application/vantage-ai/terraform.tfvars
-# Edit L2 tfvars → set db_password
-
-# Initialize all layers
-make tf-init
-make tf-workspace
-
-# Deploy layer by layer
-make tf-apply-l0   # VPC, subnets (~2 min)
-make tf-apply-l1   # ECS cluster, ECR, ALB (~5 min)
-
-# Build Lambda package (Linux x86_64)
-make lambda-package
-
-make tf-apply-l2   # SQS, RDS, Lambda, ECS service (~10 min)
+make check       # lint, tests, coverage, Python dependency audit
+make tf-check    # fmt + backend-free init/validate for all Terraform roots
+docker compose config --quiet
 ```
 
-### Step 2 — Build & Deploy the App
+## Deploy to AWS
+
+The supported cloud workflow is intentionally manual:
+
+```text
+bootstrap once
+  → select portfolio workspaces
+  → plan/apply L0
+  → plan/apply L1
+  → build immutable artifacts
+  → plan/apply L2
+  → verify API and document flow
+  → capture sanitized evidence
+  → destroy L2 → L1 → L0
+  → assert cleanup
+```
+
+Before any deployment transaction:
+
+1. Use a personally controlled, isolated AWS account.
+2. Configure a small AWS Budget alert; it is an alert, not a hard cap.
+3. Populate ignored backend/tfvars files from [the portfolio environment examples](terraform/environments/portfolio/README.md).
+4. Store the approved 12-digit account ID only in ignored `.aws-account-id`.
+5. Run `make tf-init && make tf-workspace`, then review and apply one saved plan at a time.
+
+The full operator sequence is documented in [terraform/README.md](terraform/README.md). Plans and provenance metadata live under ignored `.tfplans/` because they can contain sensitive material.
 
 ```bash
-# Build Docker image (linux/amd64), push to ECR, deploy
-make push && make deploy
+# Syntax and provider validation: no AWS credentials or backend required
+make tf-check
 
-# Wait ~60s for Fargate task to start, then verify
-ALB=$(terraform -chdir=terraform/dev/l2-application/vantage-ai output -raw shared_alb_dns_name 2>/dev/null \
-  || aws elbv2 describe-load-balancers --names vantage-ai-dev-shared-alb \
-       --region ap-southeast-2 --query 'LoadBalancers[0].DNSName' --output text)
-
-curl "http://$ALB/health"
-# → {"status":"ok","version":"1.0.0"}
+# Emergency cleanup is independent of Docker and ECR availability
+make tf-destroy
 ```
 
-### Step 3 — Enable Bedrock Model Access
+## Repository map
 
-1. AWS Console → Bedrock → Model access → Request access
-2. Search "Claude Haiku 4.5" → check → Submit
-3. Wait 2–5 minutes
-
-### Step 4 — Verify End-to-End
-
-```bash
-ALB="http://<your-alb-dns>"
-
-# Upload
-DOC_ID=$(curl -s -X POST "$ALB/documents/upload" \
-  -F "file=@sample-data.csv" | python3 -c "import sys,json; print(json.load(sys.stdin)['document_id'])")
-
-# Wait for Lambda
-sleep 5
-
-# Status
-curl "$ALB/documents/$DOC_ID/status"
-# → "status": "completed"
-
-# Records
-curl "$ALB/records?document_id=$DOC_ID"
-
-# AI Analysis
-curl -X POST "$ALB/insights/analyze?document_id=$DOC_ID"
-curl "$ALB/insights/anomalies?document_id=$DOC_ID"
+```text
+app/                         FastAPI API, runtime security, storage and Bedrock adapters
+alembic/                     Versioned PostgreSQL schema and migration adoption
+lambda/processor/            SQS-triggered checksum-verifying CSV processor
+scripts/deploy/              Provenance, immutable image, saved-plan, and workflow guards
+terraform/bootstrap/         State bucket and repository-scoped GitHub OIDC bootstrap
+terraform/layers/            L0 foundation → L1 platform → L2 application
+terraform/environments/      Safe examples; populated portfolio values stay ignored
+tests/                       Unit and integration evidence
+.github/workflows/ci.yml     Credential-free quality gates
+docs/adr/                    Cost, state, network, and secret decisions
 ```
 
-## CI/CD
+## Known tradeoffs
 
-Push to `main` triggers the GitHub Actions workflow (`.github/workflows/deploy.yml`):
+- CloudFront-to-ALB traffic uses HTTP inside an AWS-managed origin allowlist; a production system should use a custom domain and ALB TLS.
+- RDS is Single-AZ, WAF is omitted, and S3 uses SSE-S3 to keep a short-lived, non-regulated demo inexpensive.
+- The frontend bucket contains a minimal placeholder page; a focused portfolio UI is planned as a separate presentation layer.
+- The bootstrap state bucket and OIDC identity intentionally survive routine application teardown; all other chargeable project resources must be removed.
 
-```
-Lint and Test → Build & Push to ECR → Deploy to ECS → Smoke Test
-```
+## Further reading
 
-Required GitHub secret:
-- `AWS_GITHUB_DEPLOY_ROLE_ARN` — IAM role ARN for OIDC-based AWS auth
-
-## Destroy Everything
-
-```bash
-make destroy
-# ⚠️  Destroys L2 → L1 → L0. Irreversible.
-```
-
-Or destroy individual layers:
-```bash
-make tf-destroy-l2
-make tf-destroy-l1
-make tf-destroy-l0
-```
-
-## Project Structure
-
-```
-├── app/                     # FastAPI application
-│   ├── main.py              # Entry point, routes registration
-│   ├── Dockerfile           # Container build (python:3.12-slim)
-│   ├── requirements.txt
-│   ├── models/record.py     # SQLAlchemy models (Document, Record)
-│   ├── routers/
-│   │   ├── documents.py     # Upload & status endpoints
-│   │   ├── records.py       # Record listing & retrieval
-│   │   └── insights.py      # AI analysis endpoints
-│   └── services/
-│       ├── bedrock_service.py  # Bedrock Claude Haiku 4.5 client
-│       └── sqs_service.py      # SQS message producer
-├── lambda/processor/        # Lambda function for async CSV processing
-│   ├── handler.py           # SQS-triggered, parses CSV → RDS
-│   └── package.zip          # Pre-built deployment package (x86_64)
-├── terraform/dev/           # Infrastructure as Code (3 layers)
-│   ├── l0-foundation/       # VPC, subnets, IGW, security baseline
-│   ├── l1-platform/         # ECS cluster, ECR, ALB, monitoring
-│   └── l2-application/      # SQS, RDS, Lambda, IAM, ECS service, alarms
-├── .github/workflows/       # CI/CD (GitHub Actions)
-├── docker-compose.yml       # Local dev (API + PostgreSQL)
-├── Makefile                 # All project commands
-├── sample-data.csv          # 10-row test CSV (includes $75k anomaly)
-└── vantage-ai-test-plan.md  # external test plan & acceptance criteria
-```
-
-## Troubleshooting
-
-| Symptom | Fix |
-|---|---|
-| ECS task won't start (CannotPullContainerError) | Rebuild with `--platform linux/amd64` |
-| Bedrock AccessDeniedException (Legacy model) | Use Inference Profile: `au.anthropic.claude-haiku-4-5-20251001-v1:0` |
-| Bedrock AccessDeniedException (Marketplace) | Ensure IAM role has `aws-marketplace:ViewSubscriptions` + `aws-marketplace:Subscribe` |
-| Lambda not triggering | Check SQS → Lambda event source mapping exists |
-| Lambda fails, DLQ has messages | RDS security group may not allow Lambda SG |
-
----
-
-
+- [Terraform operating guide](terraform/README.md)
+- [ADR 001 — Ephemeral portfolio environment](docs/adr/001-ephemeral-portfolio-environment.md)
+- [ADR 002 — Terraform state and layering](docs/adr/002-terraform-state-and-layering.md)
+- [ADR 003 — Low-cost network and edge](docs/adr/003-low-cost-network-and-edge.md)
+- [ADR 004 — Managed secrets and state sensitivity](docs/adr/004-managed-secrets-and-terraform-state.md)
+- [Project baseline](docs/project-baseline.md)

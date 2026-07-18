@@ -1,0 +1,114 @@
+name: Portfolio emergency destroy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type "destroy portfolio" to remove the dedicated environment
+        required: true
+        type: string
+  schedule:
+    - cron: "30 17 * * *"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: vantage-ai-portfolio
+  cancel-in-progress: false
+
+env:
+  DEPLOY_COMMIT: ${{ github.sha }}
+  ENV: portfolio
+  TF_IN_AUTOMATION: "true"
+  TF_CLI_ARGS_destroy: -auto-approve
+
+jobs:
+  destroy-and-assert:
+    name: Destroy and assert cleanup
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment: portfolio
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      PORTFOLIO_OWNER: ${{ vars.PORTFOLIO_OWNER || github.repository_owner }}
+      PORTFOLIO_EXPIRES_AT: ${{ vars.PORTFOLIO_EXPIRES_AT }}
+      BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}
+      BEDROCK_INFERENCE_PROFILE_ARN: ${{ vars.BEDROCK_INFERENCE_PROFILE_ARN }}
+      BEDROCK_FOUNDATION_MODEL_ARNS: ${{ vars.BEDROCK_FOUNDATION_MODEL_ARNS }}
+    steps:
+      - name: Require manual confirmation
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$CONFIRMATION" = "destroy portfolio" || {
+            echo 'Confirmation must exactly match: destroy portfolio' >&2
+            exit 1
+          }
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+          terraform_wrapper: false
+
+      - name: Prepare deployment coordinator
+        run: python3 -m venv .venv
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: vantage-ai-emergency-${{ github.run_id }}
+          role-duration-seconds: 7200
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+          unset-current-credentials: true
+
+      - name: Verify account and create ignored runtime configuration
+        run: scripts/aws/preflight.sh
+
+      - name: Initialize dedicated portfolio workspaces
+        run: make tf-workspace
+
+      - name: Destroy only the portfolio state transaction
+        id: destroy
+        continue-on-error: true
+        run: make tf-destroy
+
+      - name: Assert runtime resource cleanup
+        id: assert-clean
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p artifacts/portfolio-evidence
+          scripts/aws/assert-clean.sh | tee artifacts/portfolio-evidence/cleanup.txt
+
+      - name: Upload cleanup result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portfolio-emergency-cleanup-${{ github.run_id }}
+          path: artifacts/portfolio-evidence/cleanup.txt
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Enforce successful destroy and cleanup assertion
+        if: always()
+        env:
+          DESTROY_OUTCOME: ${{ steps.destroy.outcome }}
+          ASSERT_OUTCOME: ${{ steps.assert-clean.outcome }}
+        run: |
+          set -euo pipefail
+          test "$DESTROY_OUTCOME" = "success"
+          test "$ASSERT_OUTCOME" = "success"

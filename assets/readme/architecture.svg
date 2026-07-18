@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600" role="img" aria-labelledby="title desc">
+  <title id="title">Vantage AI cost-controlled AWS architecture</title>
+  <desc id="desc">CloudFront routes frontend traffic to private S3 and API traffic to an allowlisted ALB, then ECS stores documents and publishes SQS jobs for a private Lambda and PostgreSQL pipeline.</desc>
+
+  <defs>
+    <marker id="orange-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10Z" fill="#ff9900"/>
+    </marker>
+    <marker id="gray-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10Z" fill="#6f7b87"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="600" rx="24" fill="#0b0d10"/>
+  <rect x="1" y="1" width="1198" height="598" rx="23" fill="none" stroke="#303944"/>
+
+  <text x="48" y="54" fill="#f6f8fa" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="28" font-weight="700">One short-lived environment, explicit trust boundaries</text>
+  <text x="48" y="80" fill="#7f8b98" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">VIEWER HTTPS · PRIVATE DATA · ASYNC PROCESSING · FAIL-CLOSED DELIVERY</text>
+
+  <g transform="translate(48 112)">
+    <rect width="1104" height="104" rx="16" fill="#11151b" stroke="#303944"/>
+    <text x="18" y="27" fill="#6f7b87" font-family="ui-monospace, monospace" font-size="11" letter-spacing="1">PUBLIC EDGE</text>
+
+    <g transform="translate(24 43)">
+      <rect width="126" height="42" rx="9" fill="#18202a" stroke="#4b5764"/>
+      <text x="63" y="26" text-anchor="middle" fill="#f6f8fa" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="14" font-weight="650">Client</text>
+    </g>
+    <path d="M160 64H216" stroke="#ff9900" stroke-width="2.4" marker-end="url(#orange-arrow)"/>
+    <text x="168" y="54" fill="#ffb84d" font-family="ui-monospace, monospace" font-size="9">HTTPS</text>
+
+    <g transform="translate(230 43)">
+      <rect width="150" height="42" rx="9" fill="#2a1f10" stroke="#ff9900"/>
+      <text x="75" y="26" text-anchor="middle" fill="#ffd08a" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="14" font-weight="650">CloudFront</text>
+    </g>
+
+    <path d="M390 64H470" stroke="#6f7b87" stroke-width="2" marker-end="url(#gray-arrow)"/>
+    <text x="410" y="54" fill="#7f8b98" font-family="ui-monospace, monospace" font-size="9">OAC</text>
+    <g transform="translate(484 43)">
+      <rect width="162" height="42" rx="9" fill="#13231a" stroke="#3d7f58"/>
+      <text x="81" y="26" text-anchor="middle" fill="#9be7b4" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="14" font-weight="650">Private frontend S3</text>
+    </g>
+
+    <path d="M380 74C452 106 668 101 736 70" fill="none" stroke="#ff9900" stroke-width="2.2" marker-end="url(#orange-arrow)"/>
+    <text x="525" y="99" fill="#ffb84d" font-family="ui-monospace, monospace" font-size="9">API behaviors · X-API-Key forwarded</text>
+    <g transform="translate(752 43)">
+      <rect width="166" height="42" rx="9" fill="#2a1f10" stroke="#ff9900"/>
+      <text x="83" y="26" text-anchor="middle" fill="#ffd08a" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="14" font-weight="650">Public ALB :80</text>
+    </g>
+    <text x="936" y="61" fill="#7f8b98" font-family="ui-monospace, monospace" font-size="9">CF PREFIX LIST ONLY</text>
+    <text x="936" y="76" fill="#7f8b98" font-family="ui-monospace, monospace" font-size="9">NO DIRECT INGRESS</text>
+  </g>
+
+  <g transform="translate(48 238)">
+    <rect width="1104" height="126" rx="16" fill="#11151b" stroke="#303944"/>
+    <text x="18" y="27" fill="#6f7b87" font-family="ui-monospace, monospace" font-size="11" letter-spacing="1">REGIONAL SERVICES · ECS PUBLIC-SUBNET EGRESS</text>
+
+    <g transform="translate(72 48)">
+      <rect width="184" height="54" rx="10" fill="#13231a" stroke="#3d7f58"/>
+      <text x="18" y="23" fill="#9be7b4" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="14" font-weight="650">Document S3</text>
+      <text x="18" y="40" fill="#7f8b98" font-family="ui-monospace, monospace" font-size="9">PRIVATE · VERSIONED · 7 DAYS</text>
+    </g>
+    <g transform="translate(334 48)">
+      <rect width="158" height="54" rx="10" fill="#18202a" stroke="#53606d"/>
+      <text x="18" y="23" fill="#f6f8fa" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="14" font-weight="650">SQS + DLQ</text>
+      <text x="18" y="40" fill="#7f8b98" font-family="ui-monospace, monospace" font-size="9">CHECKSUM CONTRACT</text>
+    </g>
+    <path d="M604 62C520 22 350 22 268 62" fill="none" stroke="#ff9900" stroke-width="2.2" marker-end="url(#orange-arrow)"/>
+    <path d="M604 75H504" stroke="#ff9900" stroke-width="2.2" marker-end="url(#orange-arrow)"/>
+    <g transform="translate(604 48)">
+      <rect width="210" height="54" rx="10" fill="#18202a" stroke="#53606d"/>
+      <text x="18" y="23" fill="#f6f8fa" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="14" font-weight="650">ECS Fargate · FastAPI</text>
+      <text x="18" y="40" fill="#7f8b98" font-family="ui-monospace, monospace" font-size="9">1 TASK · NON-ROOT · DIGEST PIN</text>
+    </g>
+    <path d="M826 75H928" stroke="#ff9900" stroke-width="2.2" marker-end="url(#orange-arrow)"/>
+    <g transform="translate(942 48)">
+      <rect width="126" height="54" rx="10" fill="#2a1f10" stroke="#ff9900"/>
+      <text x="63" y="23" text-anchor="middle" fill="#ffd08a" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="14" font-weight="650">Bedrock</text>
+      <text x="63" y="40" text-anchor="middle" fill="#7f8b98" font-family="ui-monospace, monospace" font-size="9">INFERENCE PROFILE</text>
+    </g>
+  </g>
+
+  <g transform="translate(48 386)">
+    <rect width="1104" height="126" rx="16" fill="#0f151a" stroke="#294052"/>
+    <text x="18" y="27" fill="#6f9fc3" font-family="ui-monospace, monospace" font-size="11" letter-spacing="1">PRIVATE SUBNETS · NO NAT</text>
+
+    <g transform="translate(72 48)">
+      <rect width="170" height="54" rx="10" fill="#15202a" stroke="#3c607b"/>
+      <text x="18" y="23" fill="#c4e4fa" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="14" font-weight="650">S3 gateway</text>
+      <text x="18" y="40" fill="#7f8b98" font-family="ui-monospace, monospace" font-size="9">DOCUMENT BUCKET ONLY</text>
+    </g>
+    <path d="M330 75H254" stroke="#6f9fc3" stroke-width="2" marker-end="url(#gray-arrow)"/>
+    <g transform="translate(330 48)">
+      <rect width="184" height="54" rx="10" fill="#15202a" stroke="#3c607b"/>
+      <text x="18" y="23" fill="#c4e4fa" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="14" font-weight="650">Lambda processor</text>
+      <text x="18" y="40" fill="#7f8b98" font-family="ui-monospace, monospace" font-size="9">VERIFY · PARSE · IDEMPOTENT</text>
+    </g>
+    <path d="M526 75H582" stroke="#6f9fc3" stroke-width="2" marker-end="url(#gray-arrow)"/>
+    <g transform="translate(596 48)">
+      <rect width="194" height="54" rx="10" fill="#15202a" stroke="#3c607b"/>
+      <text x="18" y="23" fill="#c4e4fa" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="14" font-weight="650">RDS PostgreSQL</text>
+      <text x="18" y="40" fill="#7f8b98" font-family="ui-monospace, monospace" font-size="9">SINGLE-AZ · MANAGED SECRET</text>
+    </g>
+    <g transform="translate(850 48)">
+      <rect width="188" height="54" rx="10" fill="#15202a" stroke="#3c607b"/>
+      <text x="18" y="23" fill="#c4e4fa" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="14" font-weight="650">Secrets endpoint</text>
+      <text x="18" y="40" fill="#7f8b98" font-family="ui-monospace, monospace" font-size="9">DB + API KEY ONLY</text>
+    </g>
+  </g>
+
+  <path d="M883 197C883 244 757 238 757 280" fill="none" stroke="#ff9900" stroke-width="2.2" marker-end="url(#orange-arrow)"/>
+  <path d="M205 428C205 394 212 380 212 340" fill="none" stroke="#6f9fc3" stroke-width="2" marker-end="url(#gray-arrow)"/>
+  <path d="M461 340C461 380 470 394 470 428" fill="none" stroke="#6f9fc3" stroke-width="2" marker-end="url(#gray-arrow)"/>
+
+  <g transform="translate(48 542)">
+    <text x="0" y="15" fill="#7f8b98" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11">COST BOUNDARY</text>
+    <circle cx="118" cy="11" r="5" fill="#58d68d"/>
+    <text x="132" y="15" fill="#aab4bf" font-family="ui-monospace, monospace" font-size="11">NO NAT GATEWAY</text>
+    <circle cx="282" cy="11" r="5" fill="#58d68d"/>
+    <text x="296" y="15" fill="#aab4bf" font-family="ui-monospace, monospace" font-size="11">SINGLE ECS TASK</text>
+    <circle cx="448" cy="11" r="5" fill="#58d68d"/>
+    <text x="462" y="15" fill="#aab4bf" font-family="ui-monospace, monospace" font-size="11">SINGLE-AZ RDS</text>
+    <circle cx="622" cy="11" r="5" fill="#58d68d"/>
+    <text x="636" y="15" fill="#aab4bf" font-family="ui-monospace, monospace" font-size="11">FORCE-DESTROY APP BUCKETS</text>
+    <text x="1104" y="15" text-anchor="end" fill="#ff9900" font-family="ui-monospace, monospace" font-size="11">L2 → L1 → L0</text>
+  </g>
+</svg>

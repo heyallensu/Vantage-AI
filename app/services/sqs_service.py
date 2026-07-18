@@ -1,31 +1,38 @@
-"""
-Sends messages to SQS.
-The API calls this after saving a document — Lambda will pick it up.
-"""
+"""Publish versioned document jobs to SQS."""
 
 import boto3
-import json
-import os
+from botocore.exceptions import BotoCoreError, ClientError
 
-sqs = boto3.client("sqs", region_name=os.getenv("AWS_DEFAULT_REGION", "ap-southeast-2"))
-
-SQS_QUEUE_URL = os.getenv("SQS_QUEUE_URL", "")  # set in ECS task environment
+from app.contracts.document_job import DocumentJob
+from app.core.config import get_settings
 
 
-def send_document_for_processing(document_id: str, filename: str) -> str:
-    """
-    Put a message on the SQS queue.
-    Lambda will receive this and parse the document.
-    Returns the SQS message ID.
-    """
-    message = {
-        "document_id": document_id,
-        "filename": filename,
-    }
-    if not SQS_QUEUE_URL:
+class QueuePublishError(RuntimeError):
+    """Stable application error for SQS provider failures."""
+
+
+def send_document_for_processing(
+    job: DocumentJob,
+    *,
+    client=None,
+    queue_url: str | None = None,
+    region: str | None = None,
+) -> str:
+    """Publish one strict v1 job and return the provider message ID."""
+    settings = get_settings() if queue_url is None or region is None else None
+    resolved_queue_url = queue_url or (settings.sqs_queue_url if settings else "")
+    resolved_region = region or (settings.aws_region if settings else "")
+    if not resolved_queue_url:
         raise RuntimeError("SQS_QUEUE_URL is required outside local development")
-    response = sqs.send_message(
-        QueueUrl=SQS_QUEUE_URL,
-        MessageBody=json.dumps(message),
+    resolved_client = client or boto3.client(
+        "sqs",
+        region_name=resolved_region,
     )
+    try:
+        response = resolved_client.send_message(
+            QueueUrl=resolved_queue_url,
+            MessageBody=job.model_dump_json(),
+        )
+    except (BotoCoreError, ClientError) as exc:
+        raise QueuePublishError("Unable to publish document job") from exc
     return response["MessageId"]
