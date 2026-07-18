@@ -198,6 +198,31 @@ def test_git_archive_excludes_uncommitted_worktree_modification(tmp_path: Path) 
         assert archived.read() == b"committed\n"
 
 
+def test_image_archive_uses_buildx_for_cross_platform_builds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commands: list[list[str]] = []
+
+    class FakeProcess:
+        def __init__(self, *, stdout: io.BytesIO | None = None) -> None:
+            self.stdout = stdout
+
+        def wait(self) -> int:
+            return 0
+
+    def fake_popen(command: list[str], **kwargs) -> FakeProcess:
+        del kwargs
+        commands.append(command)
+        return FakeProcess(stdout=io.BytesIO(b"archive")) if command[0] == "git" else FakeProcess()
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+    CommandRunner().build_archive(_image_config("a" * 40))
+
+    assert commands[1][:5] == ["docker", "buildx", "build", "--load", "--platform"]
+    assert commands[1][5] == "linux/amd64"
+
+
 def test_existing_matching_image_is_reused_without_push() -> None:
     full_sha = "a" * 40
     runner = StubRunner(
@@ -215,6 +240,7 @@ def test_existing_matching_image_is_reused_without_push() -> None:
     assert runner.login_called
     assert not runner.build_called
     assert all(command[:2] != ["docker", "push"] for command in runner.commands)
+    assert ["docker", "pull", "--platform", "linux/amd64", _image_config(full_sha).digest_uri(DIGEST_A)] in runner.commands
 
 
 def test_existing_image_revision_mismatch_fails() -> None:

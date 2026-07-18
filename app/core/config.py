@@ -22,6 +22,8 @@ class Settings:
     aws_region: str
     database_url: str = field(repr=False)
     db_secret_arn: str = field(repr=False)
+    db_host: str
+    db_port: int
     db_name: str
     document_bucket: str
     sqs_queue_url: str
@@ -34,6 +36,10 @@ class Settings:
     @classmethod
     def from_mapping(cls, values: Mapping[str, str]) -> "Settings":
         environment = values.get("ENV", "local").strip().lower()
+        try:
+            db_port = int(values.get("DB_PORT", "5432"))
+        except ValueError as exc:
+            raise ConfigurationError("DB_PORT must be an integer") from exc
         settings = cls(
             environment=environment,
             api_key=values.get(
@@ -46,6 +52,8 @@ class Settings:
                 DEFAULT_DATABASE_URL if environment == "local" else "",
             ).strip(),
             db_secret_arn=values.get("DB_SECRET_ARN", "").strip(),
+            db_host=values.get("DB_HOST", "").strip(),
+            db_port=db_port,
             db_name=values.get("DB_NAME", "vantage").strip(),
             document_bucket=values.get("DOCUMENT_BUCKET", "").strip(),
             sqs_queue_url=values.get("SQS_QUEUE_URL", "").strip(),
@@ -72,10 +80,17 @@ class Settings:
             raise ConfigurationError(
                 f"Missing required runtime configuration: {', '.join(sorted(missing))}"
             )
-        if not self.is_local and not (self.database_url or self.db_secret_arn):
-            raise ConfigurationError(
-                "Missing required runtime configuration: DATABASE_URL or DB_SECRET_ARN"
-            )
+        if not self.is_local and not self.database_url:
+            if not self.db_secret_arn:
+                raise ConfigurationError(
+                    "Missing required runtime configuration: DATABASE_URL or DB_SECRET_ARN"
+                )
+            if not self.db_host:
+                raise ConfigurationError(
+                    "Missing required runtime configuration: DB_HOST"
+                )
+        if not 1 <= self.db_port <= 65535:
+            raise ConfigurationError("DB_PORT must be between 1 and 65535")
 
 
 @lru_cache

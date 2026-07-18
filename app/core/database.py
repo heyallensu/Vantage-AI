@@ -7,18 +7,25 @@ from urllib.parse import quote
 import boto3
 
 
+def alembic_config_value(database_url: str) -> str:
+    """Escape ConfigParser interpolation without changing the resolved URL."""
+    return database_url.replace("%", "%%")
+
+
 def build_database_url(
     secret: Mapping[str, object],
     *,
     default_database: str = "",
+    default_host: str = "",
+    default_port: int = 5432,
 ) -> str:
     """Build an escaped PostgreSQL URL from the RDS managed-secret contract."""
     username = str(secret.get("username", ""))
     password = str(secret.get("password", ""))
-    host = str(secret.get("host", ""))
+    host = str(secret.get("host") or default_host)
     database = str(secret.get("dbname") or secret.get("database") or default_database)
     try:
-        port = int(secret.get("port", 5432))
+        port = int(secret.get("port", default_port))
     except (TypeError, ValueError) as exc:
         raise RuntimeError("Database secret port must be an integer") from exc
 
@@ -48,6 +55,8 @@ def resolve_database_url(
     database_url: str,
     secret_arn: str,
     database_name: str,
+    database_host: str = "",
+    database_port: int = 5432,
     region: str | None = None,
     client=None,
 ) -> str:
@@ -68,4 +77,9 @@ def resolve_database_url(
         raise RuntimeError("Database secret must contain valid JSON") from exc
     if not isinstance(secret, dict):
         raise RuntimeError("Database secret JSON must be an object")
-    return build_database_url(secret, default_database=database_name)
+    return build_database_url(
+        secret,
+        default_database=database_name,
+        default_host=database_host,
+        default_port=database_port,
+    )

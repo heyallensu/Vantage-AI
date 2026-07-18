@@ -78,6 +78,8 @@ variable "sqs_queue_url" {
 }
 
 variable "database_secret_arn" { type = string }
+variable "database_host" { type = string }
+variable "database_port" { type = number }
 variable "database_name" { type = string }
 variable "document_bucket_name" { type = string }
 variable "api_key_secret_arn" { type = string }

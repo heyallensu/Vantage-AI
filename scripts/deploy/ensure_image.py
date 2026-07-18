@@ -75,7 +75,9 @@ class CommandRunner:
         build = subprocess.Popen(
             [
                 "docker",
+                "buildx",
                 "build",
+                "--load",
                 "--platform",
                 "linux/amd64",
                 "-f",
@@ -129,7 +131,7 @@ def _verify_pulled_digest(
     runner: CommandRunner,
 ) -> None:
     digest_uri = config.digest_uri(digest)
-    runner.run(["docker", "pull", digest_uri])
+    runner.run(["docker", "pull", "--platform", "linux/amd64", digest_uri])
     revision = runner.run(
         [
             "docker",

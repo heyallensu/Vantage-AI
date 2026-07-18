@@ -78,6 +78,14 @@ resource "aws_ecs_task_definition" "app" {
           value = var.database_secret_arn
         },
         {
+          name  = "DB_HOST"
+          value = var.database_host
+        },
+        {
+          name  = "DB_PORT"
+          value = tostring(var.database_port)
+        },
+        {
           name  = "DB_NAME"
           value = var.database_name
         },
