@@ -37,7 +37,7 @@ commit.
 ## GitHub Environment configuration
 
 Create a GitHub Environment named `portfolio`, then configure these Environment
-variables. A required-reviewer rule also pauses the scheduled cleanup workflow,
+variables. A required-reviewer rule pauses manual deployment and cleanup runs,
 so use one only when that operational tradeoff is intentional.
 
 | Variable | Value |
@@ -58,8 +58,8 @@ credentials. The API key and RDS password are generated in Secrets Manager.
 Run **Portfolio demo** manually with the exact confirmation `deploy portfolio`.
 Its cleanup job assumes the OIDC role independently and runs even when deploy or
 E2E verification fails. **Portfolio emergency destroy** requires the exact
-confirmation `destroy portfolio`; its daily schedule also reconciles only the
-dedicated `portfolio` state and then asserts that tagged runtime resources are
+confirmation `destroy portfolio`. It is manual-only, reconciles only the
+dedicated `portfolio` state, and then asserts that tagged runtime resources are
 gone.
 It must start from isolated `portfolio` workspaces. Do not import the project
 external `dev` state or previously named security groups/log groups into this

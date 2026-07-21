@@ -87,7 +87,6 @@ jobs:
 
           required_destroy = {
               "manual trigger": "workflow_dispatch:",
-              "daily schedule": "schedule:",
               "portfolio environment": "environment: portfolio",
               "OIDC permission": oidc_marker,
               "shared concurrency": "group: vantage-ai-portfolio",
@@ -98,6 +97,8 @@ jobs:
           for name, marker in required_destroy.items():
               if marker not in destroy:
                   violations.append(f"destroy missing {name}")
+          if "  push:" in destroy or "  pull_request:" in destroy or "  schedule:" in destroy:
+              violations.append("destroy must be manual-only")
 
           for workflow_name, workflow in (("demo", demo), ("destroy", destroy)):
               if access_key_input in workflow or secret_key_input in workflow:
