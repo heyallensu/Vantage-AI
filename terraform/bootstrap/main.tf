@@ -496,7 +496,7 @@ data "aws_iam_policy_document" "github_infrastructure_services" {
       "logs:PutRetentionPolicy",
       "logs:TagResource",
       "logs:UntagResource",
-      "resourcegroupstaggingapi:GetResources",
+      "tag:GetResources",
     ]
     resources = ["*"]
   }

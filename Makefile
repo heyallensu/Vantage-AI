@@ -124,9 +124,17 @@ tf-init: verify-aws-context require-layer-config
 	$(ACCOUNT_ENV) terraform -chdir=$(L2_DIR) init -input=false -backend-config=../../../environments/$(ENV)/l2-application-vantage-ai.backend.hcl
 
 tf-workspace: tf-init
-	$(ACCOUNT_ENV) terraform -chdir=$(L0_DIR) workspace select $(ENV) || $(ACCOUNT_ENV) terraform -chdir=$(L0_DIR) workspace new $(ENV)
-	$(ACCOUNT_ENV) terraform -chdir=$(L1_DIR) workspace select $(ENV) || $(ACCOUNT_ENV) terraform -chdir=$(L1_DIR) workspace new $(ENV)
-	$(ACCOUNT_ENV) terraform -chdir=$(L2_DIR) workspace select $(ENV) || $(ACCOUNT_ENV) terraform -chdir=$(L2_DIR) workspace new $(ENV)
+	@if [ -n "$${TF_WORKSPACE:-}" ]; then \
+		test "$$TF_WORKSPACE" = "$(ENV)" || { echo "TF_WORKSPACE must match ENV=$(ENV)." >&2; exit 1; }; \
+		for directory in $(L0_DIR) $(L1_DIR) $(L2_DIR); do \
+			workspace="$$(terraform -chdir="$$directory" workspace show)"; \
+			test "$$workspace" = "$(ENV)" || { echo "$$directory did not initialize the $(ENV) workspace." >&2; exit 1; }; \
+		done; \
+	else \
+		$(ACCOUNT_ENV) terraform -chdir=$(L0_DIR) workspace select $(ENV) || $(ACCOUNT_ENV) terraform -chdir=$(L0_DIR) workspace new $(ENV); \
+		$(ACCOUNT_ENV) terraform -chdir=$(L1_DIR) workspace select $(ENV) || $(ACCOUNT_ENV) terraform -chdir=$(L1_DIR) workspace new $(ENV); \
+		$(ACCOUNT_ENV) terraform -chdir=$(L2_DIR) workspace select $(ENV) || $(ACCOUNT_ENV) terraform -chdir=$(L2_DIR) workspace new $(ENV); \
+	fi
 
 tf-plan:
 	@echo "Monolithic tf-plan is disabled. Use tf-plan-l0/apply-l0, then L1, then L2." >&2
