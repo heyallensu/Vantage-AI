@@ -48,6 +48,15 @@ locals {
   state_bucket_name         = "${var.state_bucket_name_prefix}-${var.state_bucket_unique_suffix}"
   github_repository_subject = "${var.github_owner}@${var.github_owner_id}/${var.github_repository}@${var.github_repository_id}"
   github_role_name          = "${var.project_name}-github-${var.state_bucket_unique_suffix}"
+  terraform_state_base_keys = [
+    "l0-foundation/terraform.tfstate",
+    "l1-platform/terraform.tfstate",
+    "l2-application/vantage-ai/terraform.tfstate",
+  ]
+  terraform_state_base_objects = concat(
+    [for key in local.terraform_state_base_keys : "${aws_s3_bucket.terraform_state.arn}/${key}"],
+    [for key in local.terraform_state_base_keys : "${aws_s3_bucket.terraform_state.arn}/${key}.tflock"],
+  )
 }
 
 resource "aws_s3_bucket" "terraform_state" {
@@ -170,7 +179,11 @@ data "aws_iam_policy_document" "github_deploy" {
     condition {
       test     = "StringLike"
       variable = "s3:prefix"
-      values   = ["vantage-ai/*"]
+      values = concat(
+        ["vantage-ai/*"],
+        local.terraform_state_base_keys,
+        [for key in local.terraform_state_base_keys : "${key}.tflock"],
+      )
     }
   }
 
@@ -182,7 +195,10 @@ data "aws_iam_policy_document" "github_deploy" {
       "s3:GetObject",
       "s3:PutObject",
     ]
-    resources = ["${aws_s3_bucket.terraform_state.arn}/vantage-ai/*"]
+    resources = concat(
+      ["${aws_s3_bucket.terraform_state.arn}/vantage-ai/*"],
+      local.terraform_state_base_objects,
+    )
   }
 
   statement {
