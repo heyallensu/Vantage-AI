@@ -1,5 +1,7 @@
 # Copy to terraform/bootstrap/terraform.tfvars. Never commit the populated file.
 # allowed_account_id is injected from the ignored .aws-account-id by make bootstrap.
 github_owner               = "<github-owner>"
+github_owner_id            = "<github-owner-id>"
 github_repository          = "<github-repository>"
+github_repository_id       = "<github-repository-id>"
 state_bucket_unique_suffix = "<globally-unique-lowercase-suffix>"

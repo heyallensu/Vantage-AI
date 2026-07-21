@@ -45,9 +45,9 @@ check "caller_account_is_allowed" {
 }
 
 locals {
-  state_bucket_name = "${var.state_bucket_name_prefix}-${var.state_bucket_unique_suffix}"
-  github_repository = "${var.github_owner}/${var.github_repository}"
-  github_role_name  = "${var.project_name}-github-${var.state_bucket_unique_suffix}"
+  state_bucket_name         = "${var.state_bucket_name_prefix}-${var.state_bucket_unique_suffix}"
+  github_repository_subject = "${var.github_owner}@${var.github_owner_id}/${var.github_repository}@${var.github_repository_id}"
+  github_role_name          = "${var.project_name}-github-${var.state_bucket_unique_suffix}"
 }
 
 resource "aws_s3_bucket" "terraform_state" {
@@ -149,7 +149,7 @@ data "aws_iam_policy_document" "github_assume_role" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${local.github_repository}:environment:portfolio"]
+      values   = ["repo:${local.github_repository_subject}:environment:portfolio"]
     }
   }
 }

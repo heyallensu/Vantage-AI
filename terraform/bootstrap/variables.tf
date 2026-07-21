@@ -25,6 +25,16 @@ variable "github_owner" {
   }
 }
 
+variable "github_owner_id" {
+  description = "Immutable numeric GitHub ID for the organization or user that owns the repository."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_owner_id))
+    error_message = "github_owner_id must contain only digits."
+  }
+}
+
 variable "github_repository" {
   description = "GitHub repository allowed to assume the deployment role."
   type        = string
@@ -32,6 +42,16 @@ variable "github_repository" {
   validation {
     condition     = can(regex("^[A-Za-z0-9._-]+$", var.github_repository))
     error_message = "github_repository must contain only characters accepted in a GitHub repository name."
+  }
+}
+
+variable "github_repository_id" {
+  description = "Immutable numeric GitHub repository ID used by the customized OIDC subject template."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_repository_id))
+    error_message = "github_repository_id must contain only digits."
   }
 }
 

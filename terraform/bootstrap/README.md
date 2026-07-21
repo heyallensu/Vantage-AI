@@ -10,6 +10,10 @@ service-specific managed policies for the Terraform resources in L0, L1, and L2.
 Copy `terraform.tfvars.example` to the ignored `terraform.tfvars`, replace every
 placeholder, verify the active AWS credentials independently, and run
 `make bootstrap`. The target prompts before applying; it never uses `-auto-approve`.
+The GitHub owner and repository IDs must match the immutable IDs embedded by the
+repository's customized OIDC subject template. Retrieve them with
+`gh api users/<owner> --jq .id` and
+`gh api repos/<owner>/<repository> --jq .id`.
 
 Keep `terraform/bootstrap/bootstrap.tfstate` secure and backed up. It contains
 the ownership record for resources that cannot safely manage their own backend.

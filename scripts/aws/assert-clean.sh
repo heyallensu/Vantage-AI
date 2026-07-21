@@ -33,7 +33,7 @@ remaining_resources() {
   local tagged
   tagged="$(aws resourcegroupstaggingapi get-resources \
     --tag-filters Key=Project,Values=vantage-ai Key=Environment,Values=portfolio \
-    --resource-type-filters ec2 elasticloadbalancing ecs:cluster ecs:service ecr:repository rds:db lambda:function sqs:queue cloudfront:distribution s3:bucket \
+    --resource-type-filters ec2 elasticloadbalancing ecs:service ecr:repository rds:db lambda:function sqs:queue cloudfront:distribution s3:bucket \
     --query 'length(ResourceTagMappingList)' \
     --output text)"
   [[ "$tagged" =~ ^[0-9]+$ ]] || tagged=1

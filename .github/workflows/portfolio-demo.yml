@@ -19,6 +19,7 @@ concurrency:
 env:
   DEPLOY_COMMIT: ${{ github.sha }}
   ENV: portfolio
+  TF_WORKSPACE: portfolio
   TF_IN_AUTOMATION: "true"
 
 jobs:

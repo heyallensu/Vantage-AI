@@ -71,6 +71,7 @@ jobs:
           required_demo = {
               "manual trigger": "workflow_dispatch:",
               "portfolio environment": "environment: portfolio",
+              "portfolio workspace": "TF_WORKSPACE: portfolio",
               "OIDC permission": oidc_marker,
               "shared concurrency": "group: vantage-ai-portfolio",
               "failure cleanup": "if: $" + "{{ always()",
@@ -88,6 +89,7 @@ jobs:
           required_destroy = {
               "manual trigger": "workflow_dispatch:",
               "portfolio environment": "environment: portfolio",
+              "portfolio workspace": "TF_WORKSPACE: portfolio",
               "OIDC permission": oidc_marker,
               "shared concurrency": "group: vantage-ai-portfolio",
               "confirmation": "destroy portfolio",
