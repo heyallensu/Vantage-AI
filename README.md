@@ -132,7 +132,7 @@ workflow policy
     └── API container              → local build → Trivy image scan
 ```
 
-CI has `contents: read` only. It does not request OIDC, read repository secrets, push an image, call AWS APIs, or apply Terraform. Trivy is SHA-pinned; remaining action SHAs are a documented final-release hardening item and are tracked by Dependabot.
+CI has `contents: read` only. It does not request OIDC, read repository secrets, push an image, call AWS APIs, or apply Terraform. Trivy is SHA-pinned; remaining action SHAs are a documented final-release hardening item reviewed during dependency maintenance.
 
 Useful local gates:
 

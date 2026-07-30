@@ -3,159 +3,169 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "04:00"
       timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       actions-minor-patch:
         patterns:
           - "*"
         update-types:
+          - major
           - minor
           - patch
 
   - package-ecosystem: pip
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "04:00"
       timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       minor-patch:
         patterns:
           - "*"
         update-types:
+          - major
           - minor
           - patch
 
   - package-ecosystem: pip
     directory: /app
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "04:00"
       timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       minor-patch:
         patterns:
           - "*"
         update-types:
+          - major
           - minor
           - patch
 
   - package-ecosystem: pip
     directory: /lambda/processor
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "04:00"
       timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       minor-patch:
         patterns:
           - "*"
         update-types:
+          - major
           - minor
           - patch
 
   - package-ecosystem: terraform
     directory: /terraform/bootstrap
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "04:00"
       timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       minor-patch:
         patterns:
           - "*"
         update-types:
+          - major
           - minor
           - patch
 
   - package-ecosystem: terraform
     directory: /terraform/layers/l0-foundation
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "04:00"
       timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       minor-patch:
         patterns:
           - "*"
         update-types:
+          - major
           - minor
           - patch
 
   - package-ecosystem: terraform
     directory: /terraform/layers/l1-platform
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "04:00"
       timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       minor-patch:
         patterns:
           - "*"
         update-types:
+          - major
           - minor
           - patch
 
   - package-ecosystem: terraform
     directory: /terraform/layers/l2-application/vantage-ai
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "04:00"
       timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       minor-patch:
         patterns:
           - "*"
         update-types:
+          - major
           - minor
           - patch
 
   - package-ecosystem: docker
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "04:00"
       timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       minor-patch:
         patterns:
           - "*"
         update-types:
+          - major
           - minor
           - patch
 
   - package-ecosystem: docker
     directory: /app
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "04:00"
       timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       minor-patch:
         patterns:
           - "*"
         update-types:
+          - major
           - minor
           - patch

@@ -346,4 +346,4 @@ curl "$BASE/insights/anomalies?document_id=$DOC_ID" | python3 -m json.tool
 | Lambda fails, message in DLQ | DB connection refused | Check RDS security group allows Lambda's SG |
 | AI returns text not JSON | Claude added extra explanation | Add `Reply ONLY with valid JSON` to prompt |
 | Route53 doesn't resolve | Missing alias record or wrong hosted zone | Check Route53 hosted zone matches domain registrar NS records |
-| Pipeline fails on deploy step | GitHub Actions OIDC role not configured | Add `AWS_GITHUB_DEPLOY_ROLE_ARN` secret to GitHub repo → Settings → Secrets and variables → Actions |
+| Pipeline fails on deploy step | GitHub Actions OIDC role not configured | Add `AWS_DEPLOY_ROLE_ARN` to the `portfolio` GitHub Environment variables |
