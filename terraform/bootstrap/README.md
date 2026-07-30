@@ -4,7 +4,7 @@ This one-time root module deliberately keeps local state while it creates the
 private, encrypted, versioned S3 bucket used by the three executable layers. It
 also creates the GitHub Actions OIDC provider and a deployment role whose trust
 policy accepts tokens only from the repository's `portfolio` GitHub Environment.
-The role has a two-hour maximum session for the bounded demo transaction and
+The role has a two-hour maximum session for the bounded deployment transaction and
 service-specific managed policies for the Terraform resources in L0, L1, and L2.
 
 Copy `terraform.tfvars.example` to the ignored `terraform.tfvars`, replace every

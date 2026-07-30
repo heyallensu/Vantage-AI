@@ -77,6 +77,10 @@ artifacts/
 test-results/
 k6-results/
 
+# Local workspace documents
+/docs/
+
+
 # Account-specific Terraform backend configuration
 *.backend.hcl
 .aws-account-id

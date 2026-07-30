@@ -1,4 +1,4 @@
-name: Portfolio emergency destroy
+name: Emergency environment cleanup
 
 on:
   workflow_dispatch:

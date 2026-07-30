@@ -85,7 +85,7 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
   restrict_public_buckets = true
 }
 
-# trivy:ignore:AWS-0132 ADR 004 accepts SSE-S3 for a short-lived personal state bucket instead of a monthly billed CMK.
+# trivy:ignore:AWS-0132 SSE-S3 provides encryption without adding a separately billed KMS key to this ephemeral environment.
 resource "aws_s3_bucket_server_side_encryption_configuration" "terraform_state" {
   bucket = aws_s3_bucket.terraform_state.id
 
@@ -640,13 +640,13 @@ data "aws_iam_policy_document" "github_infrastructure_services" {
 
 resource "aws_iam_policy" "github_infrastructure_foundation" {
   name        = "${local.github_role_name}-foundation"
-  description = "Vantage AI portfolio network, edge, and compute deployment permissions"
+  description = "Vantage AI network, edge, and compute deployment permissions"
   policy      = data.aws_iam_policy_document.github_infrastructure_foundation.json
 }
 
 resource "aws_iam_policy" "github_infrastructure_services" {
   name        = "${local.github_role_name}-services"
-  description = "Vantage AI portfolio data, observability, storage, and runtime IAM permissions"
+  description = "Vantage AI data, observability, storage, and runtime IAM permissions"
   policy      = data.aws_iam_policy_document.github_infrastructure_services.json
 }
 

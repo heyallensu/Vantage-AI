@@ -30,7 +30,7 @@ resource "aws_s3_bucket_ownership_controls" "this" {
   rule { object_ownership = "BucketOwnerEnforced" }
 }
 
-# trivy:ignore:AWS-0132 ADR 003 selects low-cost SSE-S3 for short-lived non-regulated demo data.
+# trivy:ignore:AWS-0132 SSE-S3 is sufficient for short-lived, non-regulated data in this environment.
 resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
   for_each = aws_s3_bucket.this
   bucket   = each.value.id

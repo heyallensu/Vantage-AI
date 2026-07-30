@@ -21,7 +21,7 @@ resource "aws_cloudwatch_dashboard" "operations" {
         width  = 24
         height = 2
         properties = {
-          markdown = "# Vantage AI portfolio operations\nEphemeral environment: review ECS health, application logs, Lambda errors, and DLQ depth before destroy."
+          markdown = "# Vantage AI operations\nReview ECS health, application logs, Lambda errors, and DLQ depth before environment teardown."
         }
       },
       {

@@ -28,8 +28,8 @@ resource "aws_db_instance" "this" {
   multi_az               = false
 
   backup_retention_period = var.backup_retention_period
-  # ADR 001 keeps both controls disabled for the disposable portfolio data, but
-  # callers can opt into deletion protection and final snapshots independently.
+  # Deletion protection and final snapshots remain independently configurable
+  # so durable environments can enforce either safeguard.
   deletion_protection = var.deletion_protection
   skip_final_snapshot = var.skip_final_snapshot
 

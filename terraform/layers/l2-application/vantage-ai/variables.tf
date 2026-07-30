@@ -98,7 +98,7 @@ variable "db_deletion_protection" {
 }
 
 variable "db_skip_final_snapshot" {
-  description = "Portfolio-only teardown switch. True is intentional because the demo contains disposable sample data and must auto-destroy."
+  description = "Skip the final snapshot when ephemeral data is expected to be removed during automated teardown."
   type        = bool
   default     = true
 }
@@ -139,7 +139,7 @@ variable "app_desired_count" {
 
   validation {
     condition     = var.app_desired_count == 1
-    error_message = "The low-cost portfolio environment runs exactly one ECS task."
+    error_message = "The cost-controlled environment runs exactly one ECS task."
   }
 }
 
@@ -225,7 +225,7 @@ variable "frontend_index_html" {
   description = "Small static landing page stored in the private frontend bucket."
   type        = string
   default     = <<-HTML
-    <!doctype html><html lang="en"><meta charset="utf-8"><title>Vantage AI</title><main><h1>Vantage AI</h1><p>Intelligent document processing portfolio environment.</p><p><a href="/docs">Open API documentation</a></p></main></html>
+    <!doctype html><html lang="en"><meta charset="utf-8"><title>Vantage AI</title><main><h1>Vantage AI</h1><p>Intelligent document processing platform.</p><p><a href="/docs">Open API documentation</a></p></main></html>
   HTML
 }
 

@@ -23,7 +23,7 @@ resource "aws_cloudfront_origin_access_control" "frontend" {
   signing_protocol                  = "sigv4"
 }
 
-# trivy:ignore:AWS-0011 ADR 003 omits WAF for the short-lived low-traffic portfolio environment.
+# trivy:ignore:AWS-0011 WAF is omitted for this short-lived, low-traffic, non-regulated environment.
 resource "aws_cloudfront_distribution" "this" {
   enabled             = true
   is_ipv6_enabled     = true

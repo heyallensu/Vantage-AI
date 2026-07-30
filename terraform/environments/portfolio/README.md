@@ -55,13 +55,11 @@ so use one only when that operational tradeoff is intentional.
 is empty. These values are identifiers and configuration, not long-lived AWS
 credentials. The API key and RDS password are generated in Secrets Manager.
 
-Run **Portfolio demo** manually with the exact confirmation `deploy portfolio`.
+Run **Ephemeral environment deployment** manually with the exact confirmation
+`deploy portfolio`.
 Its cleanup job assumes the OIDC role independently and runs even when deploy or
-E2E verification fails. **Portfolio emergency destroy** requires the exact
-confirmation `destroy portfolio`. It is manual-only, reconciles only the
-dedicated `portfolio` state, and then asserts that tagged runtime resources are
-gone.
-It must start from isolated `portfolio` workspaces. Do not import the project
-external `dev` state or previously named security groups/log groups into this
-environment; state-migration blocks for those unrelated resources are
-intentionally excluded.
+E2E verification fails. **Emergency environment cleanup** requires the exact
+confirmation `destroy portfolio`. It is manual-only, reconciles the dedicated
+`portfolio` state, and then asserts that tagged runtime resources are gone. All
+three layers must use isolated `portfolio` workspaces; cross-environment state
+migration is unsupported.

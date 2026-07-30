@@ -13,14 +13,16 @@
   <a href="#deploy-to-aws">AWS deployment</a>
 </p>
 
-## Proof before promises
+## Quality baseline
 
-Vantage AI is a production-oriented project for demonstrating the engineering around an AWS workload—not only the happy-path API.
+Vantage AI is a production-oriented document intelligence platform built around
+an asynchronous AWS workload, with explicit controls for security, deployment,
+observability, and recovery.
 
 | Quality signal | Engineering evidence |
 |---|---|
-| Application behavior | 104 automated tests across API, migrations, storage, security, queue contracts, Lambda, and deployment safeguards |
-| Test depth | 87.94% branch-aware Python coverage; minimum gate remains 70% |
+| Application behavior | 108 collected tests across API, migrations, storage, security, queue contracts, Lambda, and deployment safeguards |
+| Test depth | 87.37% branch-aware Python coverage; minimum gate remains 70% |
 | Database evolution | Full Alembic history tested against PostgreSQL 16 in CI |
 | Infrastructure | Bootstrap plus L0/L1/L2 Terraform roots initialize without backend credentials and validate successfully |
 | Security scanning | `pip-audit` clean; Trivy blocks fixable HIGH/CRITICAL image findings and all HIGH/CRITICAL IaC findings |
@@ -28,7 +30,7 @@ Vantage AI is a production-oriented project for demonstrating the engineering ar
 
 These results are reproducible with `make check` and `make tf-check`. CI also builds the Linux Lambda package and scans the final container image without receiving AWS credentials.
 
-## What this project demonstrates
+## Engineering highlights
 
 - **A real asynchronous document contract:** S3 object key, schema version, trace ID, and SHA-256 checksum move through SQS to Lambda.
 - **Fail-closed cloud operations:** the AWS account and all three Terraform workspaces are verified before plan, apply, ECR access, or destroy.
@@ -110,15 +112,13 @@ All protected routes use `X-API-Key`. The comparison is timing-safe, and the key
 
 | Constraint | Decision | Why it matters |
 |---|---|---|
-| project resources are not owned by this repository | A single `portfolio` environment with an allowlisted account and isolated state | Prevents accidental access to external resources |
-| NAT Gateway idle cost is disproportionate for a short demo | ECS uses a public subnet for outbound calls; Lambda uses private endpoints | Keeps the demo credible without paying for a mostly idle NAT |
-| CloudFront's default domain has no matching ALB certificate | Viewer HTTPS, CloudFront allowlist, HTTP origin hop | Honest short-term compromise; production should use custom DNS and end-to-end TLS |
+| The deployment path should be easy to understand and audit | A single `portfolio` environment with an allowlisted account and isolated state | Reduces operational complexity and keeps the infrastructure readable |
+| NAT Gateway idle cost is disproportionate for an ephemeral environment | ECS uses a public subnet for outbound calls; Lambda uses private endpoints | Keeps environment cost proportional to intermittent use |
+| CloudFront's default domain has no matching ALB certificate | Viewer HTTPS, CloudFront allowlist, HTTP origin hop | Documents the limitation; production should use custom DNS and end-to-end TLS |
 | Database passwords must not live in tfvars or task definitions | RDS-managed Secrets Manager password resolved at runtime | Removes plaintext database URLs from infrastructure configuration |
 | Mutable image tags weaken traceability | Immutable Git-SHA tag plus ECR digest in ECS | A reviewed commit maps to one deployed image |
 | A plan can drift or be replaced between review and apply | One saved plan per layer with SHA-256 manifests | A modified plan is rejected before Terraform runs |
-| Demo data and infrastructure must disappear | Seven-day document lifecycle and L2 → L1 → L0 destroy order | Limits storage retention and makes cleanup explicit |
-
-The detailed rationale lives in the [architecture decision records](docs/adr/).
+| Ephemeral data and infrastructure need a bounded lifecycle | Seven-day document lifecycle and L2 → L1 → L0 destroy order | Limits storage retention and makes cleanup explicit |
 
 ## Delivery and quality gates
 
@@ -161,7 +161,7 @@ bootstrap once
 
 Before any deployment transaction:
 
-1. Use a personally controlled, isolated AWS account.
+1. Use a dedicated, isolated AWS account.
 2. Configure a small AWS Budget alert; it is an alert, not a hard cap.
 3. Populate ignored backend/tfvars files from [the portfolio environment examples](terraform/environments/portfolio/README.md).
 4. Store the approved 12-digit account ID only in ignored `.aws-account-id`.
@@ -189,21 +189,15 @@ terraform/layers/            L0 foundation → L1 platform → L2 application
 terraform/environments/      Safe examples; populated portfolio values stay ignored
 tests/                       Unit and integration evidence
 .github/workflows/ci.yml     Credential-free quality gates
-docs/adr/                    Cost, state, network, and secret decisions
 ```
 
 ## Known tradeoffs
 
 - CloudFront-to-ALB traffic uses HTTP inside an AWS-managed origin allowlist; a production system should use a custom domain and ALB TLS.
-- RDS is Single-AZ, WAF is omitted, and S3 uses SSE-S3 to keep a short-lived, non-regulated demo inexpensive.
-- The frontend bucket contains a minimal placeholder page; a focused portfolio UI is planned as a separate presentation layer.
+- RDS is Single-AZ, WAF is omitted, and S3 uses SSE-S3 to keep the ephemeral, non-regulated environment cost-efficient.
+- The frontend bucket contains a minimal placeholder page; the product UI remains a separate presentation layer.
 - The bootstrap state bucket and OIDC identity intentionally survive routine application teardown; all other chargeable project resources must be removed.
 
 ## Further reading
 
 - [Terraform operating guide](terraform/README.md)
-- [ADR 001 — Ephemeral portfolio environment](docs/adr/001-ephemeral-portfolio-environment.md)
-- [ADR 002 — Terraform state and layering](docs/adr/002-terraform-state-and-layering.md)
-- [ADR 003 — Low-cost network and edge](docs/adr/003-low-cost-network-and-edge.md)
-- [ADR 004 — Managed secrets and state sensitivity](docs/adr/004-managed-secrets-and-terraform-state.md)
-- [Project baseline](docs/project-baseline.md)

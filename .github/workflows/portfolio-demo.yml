@@ -1,4 +1,4 @@
-name: Portfolio demo
+name: Ephemeral environment deployment
 
 on:
   workflow_dispatch:

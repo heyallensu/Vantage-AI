@@ -1,4 +1,4 @@
-"""API-key authentication dependency for portfolio-facing endpoints."""
+"""API-key authentication dependency for protected endpoints."""
 
 import hmac
 from typing import Annotated

@@ -48,7 +48,7 @@ resource "aws_lb" "this" {
 
 }
 
-# trivy:ignore:AWS-0054 The default CloudFront domain provides viewer TLS; ADR 003 accepts HTTP on the allowlisted demo origin.
+# trivy:ignore:AWS-0054 CloudFront provides viewer TLS; the ALB accepts HTTP only from the managed CloudFront origin prefix list.
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.this.arn
   port              = 80
